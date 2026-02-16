@@ -1,95 +1,91 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Calculator, Gem } from "lucide-react";
+import { Settings, Gem } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import SettingsView from "@/components/SettingsView";
 import CalculatorView from "@/components/CalculatorView";
 import { useSettings } from "@/hooks/useSettings";
 
-const tabVariants = {
-  hidden: { opacity: 0, y: 4 },
-  visible: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -4 },
-};
-
 const Index = () => {
   const { settings, setSettings } = useSettings();
-  const [tab, setTab] = useState("calculator");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[hsl(var(--background))]">
-      <div className="max-w-2xl mx-auto px-4 py-8">
-        {/* Header */}
-        <motion.header
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25, ease: "easeOut" }}
-          className="mb-6"
-        >
-          <div className="flex items-center gap-3">
-            <Gem className="w-6 h-6 text-[hsl(var(--foreground))]" />
-            <h1 className="text-xl font-medium text-[hsl(var(--foreground))] tracking-tight">
+    <div className="min-h-screen bg-[hsl(var(--surface))]">
+      {/* Top bar */}
+      <motion.header
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        className="sticky top-0 z-30 bg-[hsl(var(--background))]/90 backdrop-blur-sm border-b border-[hsl(var(--border))]"
+      >
+        <div className="max-w-2xl mx-auto px-5 h-14 flex items-center justify-between">
+          {/* Brand */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 bg-[hsl(var(--foreground))] rounded-lg flex items-center justify-center">
+              <Gem className="w-3.5 h-3.5 text-[hsl(var(--background))]" />
+            </div>
+            <span className="text-sm font-semibold tracking-tight text-[hsl(var(--foreground))]">
               Jewelry Calculator
-            </h1>
+            </span>
           </div>
-          <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1 ml-9">
-            Calculate pricing with gold rates, making charges, and stone costs
-          </p>
-        </motion.header>
 
-        <Tabs value={tab} onValueChange={setTab}>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.2, delay: 0.1 }}
+          {/* Settings trigger */}
+          <button
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Open settings"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-all"
           >
-            <TabsList className="mb-4 w-full sm:w-auto bg-[hsl(var(--muted))] p-1 rounded-md">
-              <TabsTrigger 
-                value="calculator" 
-                className="gap-2 flex-1 sm:flex-none data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--foreground))] data-[state=active]:shadow-sm"
-              >
-                <Calculator className="w-4 h-4" />
-                <span>Calculator</span>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="settings" 
-                className="gap-2 flex-1 sm:flex-none data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--foreground))] data-[state=active]:shadow-sm"
-              >
-                <Settings className="w-4 h-4" />
-                <span>Settings</span>
-              </TabsTrigger>
-            </TabsList>
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
+      </motion.header>
+
+      {/* Main content */}
+      <main className="max-w-2xl mx-auto px-5 py-10">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key="calculator"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.05, ease: "easeOut" }}
+          >
+            <CalculatorView settings={settings} />
           </motion.div>
+        </AnimatePresence>
+      </main>
 
-          <AnimatePresence mode="wait">
-            <TabsContent value="calculator" asChild>
-              <motion.div
-                key="calculator"
-                variants={tabVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                transition={{ duration: 0.15 }}
-              >
-                <CalculatorView settings={settings} />
-              </motion.div>
-            </TabsContent>
+      {/* Settings drawer */}
+      <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-xl overflow-y-auto p-0"
+        >
+          <SheetHeader className="px-6 pt-6 pb-4 border-b border-[hsl(var(--border))] sticky top-0 bg-[hsl(var(--background))] z-10">
+            <div className="flex items-center gap-2.5">
+              <div className="w-6 h-6 bg-[hsl(var(--foreground))] rounded-md flex items-center justify-center">
+                <Settings className="w-3 h-3 text-[hsl(var(--background))]" />
+              </div>
+              <SheetTitle className="text-base font-semibold text-[hsl(var(--foreground))]">
+                Settings
+              </SheetTitle>
+            </div>
+            <SheetDescription className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
+              Adjust gold rates, making charges, tax, and stone pricing
+            </SheetDescription>
+          </SheetHeader>
 
-            <TabsContent value="settings" asChild>
-              <motion.div
-                key="settings"
-                variants={tabVariants}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                transition={{ duration: 0.15 }}
-              >
-                <SettingsView settings={settings} onChange={setSettings} />
-              </motion.div>
-            </TabsContent>
-          </AnimatePresence>
-        </Tabs>
-      </div>
+          <div className="px-6 py-5">
+            <SettingsView settings={settings} onChange={setSettings} />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };

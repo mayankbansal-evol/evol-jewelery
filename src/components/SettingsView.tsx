@@ -144,12 +144,7 @@ export default function SettingsView({ settings, onChange }: SettingsViewProps) 
   const editingStone = settings.stoneTypes.find((s) => s.stoneId === editingStoneId);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
-      className="space-y-4"
-    >
+    <div className="space-y-4">
       {/* Gold Rates */}
       <Card className="border border-[hsl(var(--border))]">
         <CardContent className="p-4">
@@ -621,6 +616,6 @@ export default function SettingsView({ settings, onChange }: SettingsViewProps) 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </motion.div>
+    </div>
   );
 }
