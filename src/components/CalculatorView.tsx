@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { FixedSettings, DiamondEntry, Slab } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -18,12 +18,14 @@ import {
   Trash2,
   RotateCcw,
   CheckCircle2,
+  ImageIcon,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TOTAL_STEPS = 3;
+const TOTAL_STEPS = 4;
 const GOLD_PURITIES = ["24", "22", "18", "14"];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -65,7 +67,7 @@ function formatNumber(n: number, decimals = 2) {
 // ─── Shared UI primitives ─────────────────────────────────────────────────────
 
 function ProgressBar({ current, total }: { current: number; total: number }) {
-  const pct = total <= 1 ? 100 : Math.round(((current) / (total - 1)) * 100);
+  const pct = total <= 1 ? 100 : Math.round((current / (total - 1)) * 100);
   return (
     <div className="absolute top-0 left-0 right-0 h-[2px] bg-[hsl(var(--border))] overflow-hidden">
       <motion.div
@@ -277,7 +279,6 @@ function StoneRow({
       transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
       className="group"
     >
-      {/* Stone number label */}
       <div className="flex items-center gap-2 mb-2">
         <span className="text-[10px] font-semibold tracking-widest uppercase text-[hsl(var(--muted-foreground))]/60">
           Stone {index + 1}
@@ -286,7 +287,6 @@ function StoneRow({
           <button
             onClick={onRemove}
             className="ml-auto flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]/50 hover:text-[hsl(var(--destructive))] transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-            aria-label="Remove stone"
           >
             <Trash2 className="w-3 h-3" />
             Remove
@@ -294,7 +294,6 @@ function StoneRow({
         )}
       </div>
 
-      {/* Row: Type + Slab */}
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div className="space-y-1">
           <label className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/70">
@@ -351,7 +350,6 @@ function StoneRow({
         </div>
       </div>
 
-      {/* Row: Weight + Qty */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <label className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/70">
@@ -407,9 +405,154 @@ function StoneRow({
   );
 }
 
-// ─── Results (Step 3) ─────────────────────────────────────────────────────────
+// ─── Product step (Step 3) ───────────────────────────────────────────────────
+
+function ProductStep({
+  productName,
+  productImageUrl,
+  productNote,
+  fileInputRef,
+  onNameChange,
+  onNoteChange,
+  onImageSelect,
+  onRemoveImage,
+  onPrev,
+  onNext,
+}: {
+  productName: string;
+  productImageUrl: string | null;
+  productNote: string;
+  fileInputRef: React.RefObject<HTMLInputElement>;
+  onNameChange: (v: string) => void;
+  onNoteChange: (v: string) => void;
+  onImageSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemoveImage: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  const [nameFocused, setNameFocused] = useState(false);
+  const [noteFocused, setNoteFocused] = useState(false);
+
+  return (
+    <div className="space-y-7">
+      <div>
+        <h2 className="text-[1.6rem] font-semibold leading-tight text-[hsl(var(--foreground))]">
+          Product details
+        </h2>
+        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1.5">
+          Optional — appears on the summary
+        </p>
+      </div>
+
+      {/* Image */}
+      <div className="space-y-2">
+        <label className="text-[11px] font-semibold tracking-widest uppercase text-[hsl(var(--muted-foreground))]">
+          Product Image
+        </label>
+
+        {productImageUrl ? (
+          <div className="flex items-center gap-4">
+            <div className="relative w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-[hsl(var(--muted))]">
+              <img
+                src={productImageUrl}
+                alt="Product"
+                className="w-full h-full object-cover"
+              />
+              <button
+                onClick={onRemoveImage}
+                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-[hsl(var(--foreground))]/70 text-[hsl(var(--background))] flex items-center justify-center hover:bg-[hsl(var(--foreground))] transition-colors"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] underline underline-offset-4 transition-colors"
+            >
+              Change image
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className={cn(
+              "w-full h-24 rounded-xl border-2 border-dashed transition-colors",
+              "flex flex-col items-center justify-center gap-1.5 focus:outline-none",
+              "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]",
+              "border-[hsl(var(--border))] hover:border-[hsl(var(--foreground))]/40"
+            )}
+          >
+            <ImageIcon className="w-5 h-5" />
+            <span className="text-xs">Click to upload image</span>
+          </button>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={onImageSelect}
+          className="hidden"
+        />
+      </div>
+
+      {/* Name */}
+      <div className="space-y-2">
+        <label className="text-[11px] font-semibold tracking-widest uppercase text-[hsl(var(--muted-foreground))]">
+          Product Name
+        </label>
+        <input
+          type="text"
+          value={productName}
+          onChange={(e) => onNameChange(e.target.value)}
+          onFocus={() => setNameFocused(true)}
+          onBlur={() => setNameFocused(false)}
+          placeholder="e.g. Solitaire Ring"
+          className={cn(
+            "w-full bg-transparent text-xl font-light text-[hsl(var(--foreground))]",
+            "placeholder:text-[hsl(var(--muted-foreground))]/30",
+            "border-0 border-b-2 pb-2 focus:outline-none transition-colors",
+            nameFocused
+              ? "border-[hsl(var(--foreground))]"
+              : "border-[hsl(var(--border))]"
+          )}
+        />
+      </div>
+
+      {/* Note */}
+      <div className="space-y-2">
+        <label className="text-[11px] font-semibold tracking-widest uppercase text-[hsl(var(--muted-foreground))]">
+          Note
+        </label>
+        <textarea
+          value={productNote}
+          onChange={(e) => onNoteChange(e.target.value)}
+          onFocus={() => setNoteFocused(true)}
+          onBlur={() => setNoteFocused(false)}
+          placeholder="Any additional notes…"
+          rows={3}
+          className={cn(
+            "w-full bg-transparent text-sm text-[hsl(var(--foreground))] resize-none",
+            "placeholder:text-[hsl(var(--muted-foreground))]/30",
+            "border-0 border-b-2 pb-2 focus:outline-none transition-colors leading-relaxed",
+            noteFocused
+              ? "border-[hsl(var(--foreground))]"
+              : "border-[hsl(var(--border))]"
+          )}
+        />
+      </div>
+
+      <NavRow onPrev={onPrev} onNext={onNext} nextLabel="See Summary" />
+    </div>
+  );
+}
+
+// ─── Results (Step 4) ─────────────────────────────────────────────────────────
 
 interface ResultsData {
+  productName: string;
+  productImageUrl: string | null;
+  productNote: string;
   netGoldWeight: number;
   purity: string;
   goldRateValue: number;
@@ -418,7 +561,12 @@ interface ResultsData {
   stoneDetails: Array<{
     id: string;
     stoneType?: { name: string };
-    slabInfo: { code: string } | null;
+    slabInfo: {
+      code: string;
+      fromWeight: number;
+      toWeight: number;
+      pricePerCarat: number;
+    } | null;
     weight: number;
     quantity: number;
     totalCost: number;
@@ -442,21 +590,75 @@ function ResultsStep({
   onBack: () => void;
   onReset: () => void;
 }) {
+  const hasStones = data.stoneDetails.some((d) => d.weight > 0);
+  const displayName = data.productName.trim() || "Untitled Piece";
+
   return (
-    <div className="space-y-0">
+    <div>
+      {/* Step heading */}
       <div className="mb-5">
         <h2 className="text-[1.6rem] font-semibold leading-tight text-[hsl(var(--foreground))]">
-          Price Breakdown
+          Summary
         </h2>
         <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
-          Here's the full cost summary
+          Full cost breakdown for this piece
         </p>
       </div>
 
-      {/* Breakdown */}
-      <div className="space-y-0 rounded-xl border border-[hsl(var(--border))] overflow-hidden">
+      {/* ── The single summary card ── */}
+      <div className="rounded-xl border border-[hsl(var(--border))] overflow-hidden">
+
+        {/* Product header */}
+        <div className="grid grid-cols-2">
+          {/* Image — left half */}
+          <div className="relative aspect-square bg-[hsl(var(--muted))] flex items-center justify-center overflow-hidden">
+            {data.productImageUrl ? (
+              <img
+                src={data.productImageUrl}
+                alt={displayName}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <ImageIcon className="w-8 h-8 text-[hsl(var(--muted-foreground))]/30" />
+            )}
+          </div>
+
+          {/* Name + note + total — right half */}
+          <div className="flex flex-col justify-between px-4 py-4 min-w-0">
+            <div className="min-w-0">
+              <p
+                className={cn(
+                  "text-base font-semibold leading-snug",
+                  !data.productName.trim()
+                    ? "text-[hsl(var(--muted-foreground))]"
+                    : "text-[hsl(var(--foreground))]"
+                )}
+              >
+                {displayName}
+              </p>
+              {data.productNote.trim() && (
+                <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1.5 line-clamp-3 leading-relaxed">
+                  {data.productNote.trim()}
+                </p>
+              )}
+            </div>
+
+            {/* Total anchored to bottom */}
+            <div className="mt-3">
+              <p className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/60 mb-0.5">
+                Total
+              </p>
+              <p className="text-xl font-bold tabular text-[hsl(var(--foreground))]">
+                {formatCurrency(data.total)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <Separator />
+
         {/* Gross weight */}
-        <div className="flex items-center justify-between px-4 py-3 bg-[hsl(var(--muted))]/50">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-[hsl(var(--muted))]/40">
           <span className="text-xs font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]">
             Gross Weight
           </span>
@@ -467,21 +669,23 @@ function ResultsStep({
 
         <Separator />
 
-        {/* Gold */}
-        <div className="px-4 py-3 space-y-2.5">
+        {/* Gold section */}
+        <div className="px-4 py-3 space-y-3">
           <p className="text-[10px] font-semibold tracking-widest uppercase text-[hsl(var(--muted-foreground))]/60">
             Gold
           </p>
-          <div className="flex items-center gap-0 text-sm">
-            <div className="flex-1">
-              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">Wt</p>
+
+          {/* Gold stats row */}
+          <div className="grid grid-cols-4 gap-2 text-sm">
+            <div>
+              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">Net Wt</p>
               <p className="font-medium tabular">{formatNumber(data.netGoldWeight)} g</p>
             </div>
-            <div className="flex-1">
+            <div>
               <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">Purity</p>
               <p className="font-medium">{data.purity}K</p>
             </div>
-            <div className="flex-1">
+            <div>
               <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">Rate</p>
               <p className="font-medium tabular">{formatCurrency(data.goldRateValue)}</p>
             </div>
@@ -490,69 +694,110 @@ function ResultsStep({
               <p className="font-semibold tabular">{formatCurrency(data.goldCost)}</p>
             </div>
           </div>
-          <div className="flex justify-between items-center pt-1 border-t border-[hsl(var(--border))]/40">
+
+          {/* Making charges */}
+          <div className="flex justify-between items-center pt-2 border-t border-[hsl(var(--border))]/40">
             <div>
-              <span className="text-sm text-[hsl(var(--muted-foreground))]">Making Charges</span>
+              <span className="text-sm text-[hsl(var(--muted-foreground))]">
+                Making Charges
+              </span>
               <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 mt-0.5">
                 {data.netGoldWeightForMaking > 0 && data.netGoldWeightForMaking <= 2
                   ? "Flat rate (≤ 2g)"
                   : data.netGoldWeightForMaking > 2
-                  ? `${formatNumber(data.netGoldWeightForMaking)}g × ${formatCurrency(data.makingChargePerGram)}`
+                  ? `${formatNumber(data.netGoldWeightForMaking)} g × ${formatCurrency(data.makingChargePerGram)}`
                   : ""}
               </p>
             </div>
-            <span className="text-sm font-semibold tabular">{formatCurrency(data.makingCost)}</span>
+            <span className="text-sm font-semibold tabular">
+              {formatCurrency(data.makingCost)}
+            </span>
           </div>
         </div>
 
         <Separator />
 
-        {/* Stones */}
-        {data.stoneDetails.some((d) => d.weight > 0) && (
+        {/* Stones section */}
+        {hasStones && (
           <>
-            <div className="px-4 py-3 space-y-2">
-              <p className="text-[10px] font-semibold tracking-widest uppercase text-[hsl(var(--muted-foreground))]/60">
+            <div className="px-4 py-3 space-y-0">
+              <p className="text-[10px] font-semibold tracking-widest uppercase text-[hsl(var(--muted-foreground))]/60 mb-2.5">
                 Stones
               </p>
+
               {data.stoneDetails
                 .filter((d) => d.weight > 0)
-                .map((d) => (
+                .map((d, i, arr) => (
                   <div
                     key={d.id}
-                    className="flex justify-between items-start py-1.5 border-t border-[hsl(var(--border))]/40 first:border-0"
+                    className={cn(
+                      "py-2.5",
+                      i < arr.length - 1 && "border-b border-[hsl(var(--border))]/40"
+                    )}
                   >
-                    <div>
+                    {/* Stone name + cost */}
+                    <div className="flex items-start justify-between gap-3 mb-1">
                       <span className="text-sm font-medium text-[hsl(var(--foreground))]">
                         {d.stoneType?.name ?? "Unknown"}
                       </span>
-                      <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-0.5">
-                        {formatNumber(d.weight, 3)} ct · {d.quantity} pcs
-                        {d.slabInfo ? ` · ${d.slabInfo.code}` : ""}
-                      </p>
+                      <span className="text-sm font-semibold tabular shrink-0">
+                        {formatCurrency(d.totalCost)}
+                      </span>
                     </div>
-                    <span className="text-sm font-semibold tabular shrink-0 ml-4">
-                      {formatCurrency(d.totalCost)}
-                    </span>
+
+                    {/* Stone detail chips */}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                        {formatNumber(d.weight, 3)} ct
+                      </span>
+                      <span className="text-[10px] text-[hsl(var(--muted-foreground))]/40">·</span>
+                      <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                        {d.quantity} pcs
+                      </span>
+                      {d.slabInfo && (
+                        <>
+                          <span className="text-[10px] text-[hsl(var(--muted-foreground))]/40">·</span>
+                          <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]">
+                            {d.slabInfo.code}
+                          </span>
+                          <span className="text-[10px] text-[hsl(var(--muted-foreground))]/40">·</span>
+                          <span className="text-[10px] tabular text-[hsl(var(--muted-foreground))]">
+                            {formatNumber(d.slabInfo.fromWeight, 3)}–{formatNumber(d.slabInfo.toWeight, 3)} ct
+                          </span>
+                          <span className="text-[10px] text-[hsl(var(--muted-foreground))]/40">·</span>
+                          <span className="text-[10px] tabular text-[hsl(var(--muted-foreground))]">
+                            {formatCurrency(d.slabInfo.pricePerCarat)}/ct
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </div>
                 ))}
+
+              {/* Stones subtotal */}
               {data.totalStoneCost > 0 && (
-                <div className="flex justify-between items-center pt-2 border-t border-[hsl(var(--border))]/40">
-                  <span className="text-xs text-[hsl(var(--muted-foreground))]">Total Stones</span>
+                <div className="flex justify-between items-center pt-2.5 border-t border-[hsl(var(--border))]/40">
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]">
+                    Total Stones
+                  </span>
                   <span className="text-sm font-semibold tabular">
                     {formatCurrency(data.totalStoneCost)}
                   </span>
                 </div>
               )}
             </div>
+
             <Separator />
           </>
         )}
 
-        {/* Subtotals */}
+        {/* Subtotal + GST */}
         <div className="px-4 py-3 space-y-2">
           <div className="flex justify-between items-center">
             <span className="text-sm text-[hsl(var(--muted-foreground))]">Subtotal</span>
-            <span className="text-sm tabular font-medium">{formatCurrency(data.subTotal)}</span>
+            <span className="text-sm tabular font-medium">
+              {formatCurrency(data.subTotal)}
+            </span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-sm text-[hsl(var(--muted-foreground))]">
@@ -564,7 +809,7 @@ function ResultsStep({
           </div>
         </div>
 
-        {/* Total */}
+        {/* Grand total bar */}
         <div className="bg-[hsl(var(--foreground))] text-[hsl(var(--background))] px-4 py-4 flex justify-between items-center">
           <span className="text-sm font-medium">Total</span>
           <motion.span
@@ -615,8 +860,14 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
     },
   ]);
 
+  // ── Product state ──
+  const [productName, setProductName] = useState("");
+  const [productImageUrl, setProductImageUrl] = useState<string | null>(null);
+  const [productNote, setProductNote] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // ── Stepper state ──
-  const [currentStep, setCurrentStep] = useState(0); // 0 = gold, 1 = stones, 2 = results
+  const [currentStep, setCurrentStep] = useState(0);
   const [direction, setDirection] = useState<"forward" | "back">("forward");
 
   // ── Gold rates ──
@@ -631,7 +882,7 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
   const goldRateValue =
     calculatedGoldRates.find((g) => g.purity === purity)?.rate ?? 0;
 
-  // ── Helpers ──
+  // ── Stone helpers ──
   const getStoneSlabs = useCallback(
     (stoneTypeId: string): Slab[] =>
       settings.stoneTypes.find((s) => s.stoneId === stoneTypeId)?.slabs ?? [],
@@ -658,7 +909,14 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
       ...d,
       stoneType,
       totalCost,
-      slabInfo: slab ? { code: slab.code } : null,
+      slabInfo: slab
+        ? {
+            code: slab.code,
+            fromWeight: slab.fromWeight,
+            toWeight: slab.toWeight,
+            pricePerCarat: slab.pricePerCarat,
+          }
+        : null,
     };
   });
 
@@ -690,6 +948,12 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
         quantity: 1,
       },
     ]);
+    setProductName("");
+    setProductNote("");
+    if (productImageUrl) {
+      URL.revokeObjectURL(productImageUrl);
+      setProductImageUrl(null);
+    }
     setCurrentStep(0);
     setDirection("forward");
   };
@@ -727,13 +991,28 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
     setStones((prev) => prev.filter((d) => d.id !== id));
   };
 
+  // ── Image handling ──
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (productImageUrl) URL.revokeObjectURL(productImageUrl);
+    setProductImageUrl(URL.createObjectURL(file));
+    // reset input so same file can be re-selected
+    e.target.value = "";
+  };
+
+  const removeImage = () => {
+    if (productImageUrl) URL.revokeObjectURL(productImageUrl);
+    setProductImageUrl(null);
+  };
+
   // ── Validation ──
   const step1Valid = netGoldWeight > 0;
-  // Step 2 valid: every stone that has weight > 0 must also have a slab selected
   const stonesValid =
     stones.length > 0 &&
     stones.some((s) => s.weight > 0) &&
     stones.every((s) => s.weight === 0 || (s.weight > 0 && !!s.slabId));
+  // Step 3 (product details) is always optional — always valid
 
   // ── Slide variants ──
   const slideVariants = {
@@ -748,7 +1027,7 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
     }),
   };
 
-  const stepLabels = ["Gold Details", "Stones", "Summary"];
+  const stepLabels = ["Gold Details", "Stones", "Product Details", "Summary"];
 
   // ── Step renderers ──
 
@@ -809,14 +1088,11 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
         </p>
       </div>
 
-      {/* Stone list */}
       <div className="space-y-5">
         <AnimatePresence mode="popLayout" initial={false}>
           {stones.map((stone, i) => (
             <div key={stone.id}>
-              {i > 0 && (
-                <Separator className="mb-5" />
-              )}
+              {i > 0 && <Separator className="mb-5" />}
               <StoneRow
                 stone={stone}
                 index={i}
@@ -834,7 +1110,6 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
         </AnimatePresence>
       </div>
 
-      {/* Add stone */}
       <button
         onClick={addStone}
         className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors pt-1"
@@ -854,9 +1129,27 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
     </div>
   );
 
+  const renderProductStep = () => (
+    <ProductStep
+      productName={productName}
+      productImageUrl={productImageUrl}
+      productNote={productNote}
+      fileInputRef={fileInputRef}
+      onNameChange={setProductName}
+      onNoteChange={setProductNote}
+      onImageSelect={handleImageSelect}
+      onRemoveImage={removeImage}
+      onPrev={goPrev}
+      onNext={goNext}
+    />
+  );
+
   const renderResultsStep = () => (
     <ResultsStep
       data={{
+        productName,
+        productImageUrl,
+        productNote,
         netGoldWeight,
         purity,
         goldRateValue,
@@ -881,17 +1174,16 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
     switch (currentStep) {
       case 0: return renderGoldStep();
       case 1: return renderStonesStep();
-      case 2: return renderResultsStep();
+      case 2: return renderProductStep();
+      case 3: return renderResultsStep();
       default: return null;
     }
   };
 
   return (
     <div className="relative w-full max-w-lg mx-auto">
-      {/* Progress bar */}
       <ProgressBar current={currentStep} total={TOTAL_STEPS} />
 
-      {/* Step meta */}
       <div className="flex items-center justify-between mb-5 pt-4">
         <StepPill
           current={currentStep + 1}
@@ -900,7 +1192,6 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
         />
       </div>
 
-      {/* Card */}
       <div className="bg-[hsl(var(--card))] rounded-2xl step-card p-7 overflow-hidden">
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
