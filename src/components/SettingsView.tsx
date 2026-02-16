@@ -1,10 +1,36 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { motion } from "motion/react";
 import { FixedSettings, StoneType, Slab } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, ChevronDown, ChevronRight, Pencil } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Plus,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  ChevronLeft,
+  Diamond,
+  Percent,
+} from "lucide-react";
 
 interface SettingsViewProps {
   settings: FixedSettings;
@@ -15,265 +41,586 @@ function genId() {
   return Math.random().toString(36).slice(2, 9);
 }
 
+function formatCurrency(n: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
+const GOLD_PURITIES = ["24", "22", "18", "14"];
+
 export default function SettingsView({ settings, onChange }: SettingsViewProps) {
   const [editingStoneId, setEditingStoneId] = useState<string | null>(null);
+  const [stoneToDelete, setStoneToDelete] = useState<string | null>(null);
+  const [goldExpanded, setGoldExpanded] = useState(true);
+  const [makingExpanded, setMakingExpanded] = useState(true);
+  const [taxExpanded, setTaxExpanded] = useState(true);
+  const [stonesExpanded, setStonesExpanded] = useState(true);
 
-  const updateGoldRate = (index: number, rate: number) => {
-    const updated = [...settings.goldRates];
-    updated[index] = { ...updated[index], rate };
-    onChange({ ...settings, goldRates: updated });
+  const calculatedGoldRates = useMemo(() => {
+    return GOLD_PURITIES.map((purity) => {
+      const percentage = settings.purityPercentages[purity] ?? 100;
+      const rate = Math.round(settings.goldRate24k * (percentage / 100));
+      return { purity, label: `${purity}K`, rate, percentage };
+    });
+  }, [settings.goldRate24k, settings.purityPercentages]);
+
+  const updateGoldRate24k = (value: number) => {
+    onChange({ ...settings, goldRate24k: value });
   };
 
-  const updateMaking = (value: number) => {
-    onChange({ ...settings, makingCharge: value });
+  const updatePurityPercentage = (purity: string, value: number) => {
+    onChange({
+      ...settings,
+      purityPercentages: {
+        ...settings.purityPercentages,
+        [purity]: value,
+      },
+    });
   };
 
-  const updateStoneType = (id: string, updates: Partial<StoneType>) => {
+  const updateMakingFlat = (value: number) => {
+    onChange({ ...settings, makingChargeFlat: value });
+  };
+
+  const updateMakingPerGram = (value: number) => {
+    onChange({ ...settings, makingChargePerGram: value });
+  };
+
+  const updateGstRate = (value: number) => {
+    onChange({ ...settings, gstRate: value / 100 });
+  };
+
+  const updateStoneType = (stoneId: string, updates: Partial<StoneType>) => {
     onChange({
       ...settings,
       stoneTypes: settings.stoneTypes.map((st) =>
-        st.id === id ? { ...st, ...updates } : st
+        st.stoneId === stoneId ? { ...st, ...updates } : st
       ),
     });
   };
 
   const addStoneType = () => {
     const newStone: StoneType = {
-      id: genId(),
+      stoneId: genId(),
       name: "New Stone",
-      stoneId: "",
       type: "Diamond",
       clarity: "",
       color: "",
       slabs: [],
     };
     onChange({ ...settings, stoneTypes: [...settings.stoneTypes, newStone] });
-    setEditingStoneId(newStone.id);
+    setEditingStoneId(newStone.stoneId);
   };
 
-  const removeStoneType = (id: string) => {
-    onChange({ ...settings, stoneTypes: settings.stoneTypes.filter((st) => st.id !== id) });
-    if (editingStoneId === id) setEditingStoneId(null);
+  const confirmRemoveStoneType = (stoneId: string) => {
+    onChange({ ...settings, stoneTypes: settings.stoneTypes.filter((st) => st.stoneId !== stoneId) });
+    if (editingStoneId === stoneId) setEditingStoneId(null);
+    setStoneToDelete(null);
   };
 
   const addSlab = (stoneId: string) => {
-    const stone = settings.stoneTypes.find((s) => s.id === stoneId);
+    const stone = settings.stoneTypes.find((s) => s.stoneId === stoneId);
     if (!stone) return;
-    const newSlab: Slab = { id: genId(), code: "", fromWeight: 0, toWeight: 0, pricePerCarat: 0, discount: 0 };
+    const newSlab: Slab = { code: "", fromWeight: 0, toWeight: 0, pricePerCarat: 0, discount: 0 };
     updateStoneType(stoneId, { slabs: [...stone.slabs, newSlab] });
   };
 
   const updateSlab = (stoneId: string, slabIndex: number, updates: Partial<Slab>) => {
-    const stone = settings.stoneTypes.find((s) => s.id === stoneId);
+    const stone = settings.stoneTypes.find((s) => s.stoneId === stoneId);
     if (!stone) return;
     const slabs = stone.slabs.map((sl, i) => (i === slabIndex ? { ...sl, ...updates } : sl));
     updateStoneType(stoneId, { slabs });
   };
 
   const removeSlab = (stoneId: string, slabIndex: number) => {
-    const stone = settings.stoneTypes.find((s) => s.id === stoneId);
+    const stone = settings.stoneTypes.find((s) => s.stoneId === stoneId);
     if (!stone) return;
     updateStoneType(stoneId, { slabs: stone.slabs.filter((_, i) => i !== slabIndex) });
   };
 
-  const editingStone = settings.stoneTypes.find((s) => s.id === editingStoneId);
-
-  const fmt = (n: number) => new Intl.NumberFormat("en-IN").format(n);
+  const editingStone = settings.stoneTypes.find((s) => s.stoneId === editingStoneId);
 
   return (
-    <div className="space-y-8">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      className="space-y-4"
+    >
       {/* Gold Rates */}
-      <section>
-        <h2 className="text-base font-semibold text-foreground mb-3">Gold Rates (per gram)</h2>
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-muted/60">
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Purity</th>
-                <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Rate (₹)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {settings.goldRates.map((gr, i) => (
-                <tr key={gr.purity} className="border-t border-border hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-2.5 text-sm text-foreground font-medium">{gr.label}</td>
-                  <td className="px-4 py-2.5 text-right">
-                    <Input type="number" value={gr.rate} onChange={(e) => updateGoldRate(i, Number(e.target.value))} className="w-32 ml-auto text-right h-8 text-sm" />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <Card className="border border-[hsl(var(--border))]">
+        <CardContent className="p-4">
+          <Collapsible open={goldExpanded} onOpenChange={setGoldExpanded}>
+            <CollapsibleTrigger asChild>
+              <button className="w-full flex items-center justify-between py-1 hover:bg-[hsl(var(--muted))] rounded px-2 -mx-2 transition-colors">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-medium text-[hsl(var(--foreground))] uppercase tracking-wide">
+                    Gold Rates
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[hsl(var(--foreground))]">
+                    Base: 24K
+                  </span>
+                  {goldExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-[hsl(var(--foreground))]" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-[hsl(var(--foreground))]" />
+                  )}
+                </div>
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="pt-4 space-y-3">
+                <div className="p-3 bg-[hsl(var(--muted))] rounded-md">
+                  <label className="text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-wide block mb-2">
+                    24K Gold Rate (Base)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-[hsl(var(--muted-foreground))]">₹</span>
+                    <Input
+                      type="number"
+                      value={settings.goldRate24k}
+                      onChange={(e) => updateGoldRate24k(Number(e.target.value))}
+                      className="w-32 h-9 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                    />
+                    <span className="text-sm text-[hsl(var(--muted-foreground))]">/g</span>
+                  </div>
+                </div>
 
-      {/* Making Charge */}
-      <section>
-        <h2 className="text-base font-semibold text-foreground mb-3">Making Charge (per gram)</h2>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">₹</span>
-          <Input type="number" value={settings.makingCharge} onChange={(e) => updateMaking(Number(e.target.value))} className="w-40 h-9" />
-        </div>
-      </section>
+                <div className="space-y-2">
+                  <p className="text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-wide">
+                    Purity Percentages
+                  </p>
+                  {calculatedGoldRates.map((gr) => (
+                    <div
+                      key={gr.purity}
+                      className="flex items-center justify-between py-2 px-3 bg-[hsl(var(--muted))]/50 rounded-md"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]">
+                          {gr.purity}K
+                        </span>
+                        <span className="text-sm text-[hsl(var(--foreground))]">{gr.label}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          value={gr.percentage}
+                          onChange={(e) => updatePurityPercentage(gr.purity, Number(e.target.value))}
+                          className="w-16 h-8 text-xs text-right border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                        />
+                        <span className="text-xs text-[hsl(var(--muted-foreground))]">%</span>
+                        <span className="text-sm font-mono text-[hsl(var(--muted-foreground))] ml-2">
+                          {formatCurrency(gr.rate)}/g
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </CardContent>
+      </Card>
+
+      {/* Making Charges */}
+      <Card className="border border-[hsl(var(--border))]">
+        <CardContent className="p-4">
+          <Collapsible open={makingExpanded} onOpenChange={setMakingExpanded}>
+            <CollapsibleTrigger asChild>
+              <button className="w-full flex items-center justify-between py-1 hover:bg-[hsl(var(--muted))] rounded px-2 -mx-2 transition-colors">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-medium text-[hsl(var(--foreground))] uppercase tracking-wide">
+                    Making Charges
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-mono text-[hsl(var(--foreground))]">
+                    Flat: {formatCurrency(settings.makingChargeFlat)} | {formatCurrency(settings.makingChargePerGram)}/g
+                  </span>
+                  {makingExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-[hsl(var(--foreground))]" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-[hsl(var(--foreground))]" />
+                  )}
+                </div>
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="pt-4 space-y-4">
+                <div className="p-3 bg-[hsl(var(--muted))] rounded-md">
+                  <label className="text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-wide block mb-2">
+                    Flat Fee (≤ 2g)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-[hsl(var(--muted-foreground))]">₹</span>
+                    <Input
+                      type="number"
+                      value={settings.makingChargeFlat}
+                      onChange={(e) => updateMakingFlat(Number(e.target.value))}
+                      className="w-32 h-9 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                    />
+                    <span className="text-sm text-[hsl(var(--muted-foreground))]">flat</span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-[hsl(var(--muted))] rounded-md">
+                  <label className="text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-wide block mb-2">
+                    Per Gram (&gt; 2g)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-[hsl(var(--muted-foreground))]">₹</span>
+                    <Input
+                      type="number"
+                      value={settings.makingChargePerGram}
+                      onChange={(e) => updateMakingPerGram(Number(e.target.value))}
+                      className="w-32 h-9 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                    />
+                    <span className="text-sm text-[hsl(var(--muted-foreground))]">/g</span>
+                  </div>
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </CardContent>
+      </Card>
+
+      {/* GST / Tax */}
+      <Card className="border border-[hsl(var(--border))]">
+        <CardContent className="p-4">
+          <Collapsible open={taxExpanded} onOpenChange={setTaxExpanded}>
+            <CollapsibleTrigger asChild>
+              <button className="w-full flex items-center justify-between py-1 hover:bg-[hsl(var(--muted))] rounded px-2 -mx-2 transition-colors">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-medium text-[hsl(var(--foreground))] uppercase tracking-wide">
+                    Tax (GST)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-mono text-[hsl(var(--foreground))]">
+                    {settings.gstRate * 100}%
+                  </span>
+                  {taxExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-[hsl(var(--foreground))]" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-[hsl(var(--foreground))]" />
+                  )}
+                </div>
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="pt-4">
+                <div className="p-3 bg-[hsl(var(--muted))] rounded-md">
+                  <label className="text-xs text-[hsl(var(--muted-foreground))] uppercase tracking-wide block mb-2">
+                    GST Percentage
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={settings.gstRate * 100}
+                      onChange={(e) => updateGstRate(Number(e.target.value))}
+                      className="w-24 h-9 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                    />
+                    <Percent className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+                  </div>
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </CardContent>
+      </Card>
 
       {/* Stone Prices */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold text-foreground">Stone Prices</h2>
-          <Button variant="outline" size="sm" onClick={addStoneType} className="h-8 text-xs">
-            <Plus className="w-3.5 h-3.5 mr-1" /> Add Stone Type
-          </Button>
-        </div>
+      <Card className="border border-[hsl(var(--border))]">
+        <CardContent className="p-4">
+          <Collapsible open={stonesExpanded} onOpenChange={setStonesExpanded}>
+            <CollapsibleTrigger asChild>
+              <button className="w-full flex items-center justify-between py-1 hover:bg-[hsl(var(--muted))] rounded px-2 -mx-2 transition-colors">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-medium text-[hsl(var(--foreground))] uppercase tracking-wide">
+                    Stone Types
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addStoneType();
+                    }}
+                    className="h-7 text-xs gap-1 hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add
+                  </Button>
+                  <span className="text-xs text-[hsl(var(--foreground))]">
+                    {settings.stoneTypes.length}
+                  </span>
+                  {stonesExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-[hsl(var(--foreground))]" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-[hsl(var(--foreground))]" />
+                  )}
+                </div>
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="pt-4">
+                {editingStone ? (
+                  <motion.div
+                    key="editing"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="space-y-4"
+                  >
+                    <button
+                      onClick={() => setEditingStoneId(null)}
+                      className="flex items-center gap-1 text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      Back to list
+                    </button>
 
-        {/* If editing a specific stone */}
-        {editingStone ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Button variant="ghost" size="sm" onClick={() => setEditingStoneId(null)} className="h-8 px-2">
-                <ChevronRight className="w-4 h-4 rotate-180" />
-              </Button>
-              <h3 className="text-sm font-semibold text-foreground">Edit {editingStone.name}</h3>
-              <Badge variant={editingStone.type === "Diamond" ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
-                {editingStone.type}
-              </Badge>
-            </div>
-
-            {/* Stone details */}
-            <div className="bg-card border border-border rounded-lg p-4 space-y-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Stone Details</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Name</label>
-                  <Input value={editingStone.name} onChange={(e) => updateStoneType(editingStone.id, { name: e.target.value })} className="h-8 text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Stone ID</label>
-                  <Input value={editingStone.stoneId} onChange={(e) => updateStoneType(editingStone.id, { stoneId: e.target.value })} className="h-8 text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Clarity</label>
-                  <Input value={editingStone.clarity} onChange={(e) => updateStoneType(editingStone.id, { clarity: e.target.value })} className="h-8 text-sm" />
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Type</label>
-                  <Select value={editingStone.type} onValueChange={(v) => updateStoneType(editingStone.id, { type: v as "Diamond" | "Gemstone" })}>
-                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Diamond">Diamond</SelectItem>
-                      <SelectItem value="Gemstone">Gemstone</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-
-            {/* Slabs */}
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2.5 bg-muted/40">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Pricing Slabs</p>
-                <Button variant="ghost" size="sm" onClick={() => addSlab(editingStone.id)} className="h-7 text-xs">
-                  <Plus className="w-3 h-3 mr-1" /> Add Slab
-                </Button>
-              </div>
-              {editingStone.slabs.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  No slabs yet. Click "Add Slab" to add weight ranges.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[600px]">
-                    <thead>
-                      <tr className="bg-muted/30">
-                        <th className="text-left px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider w-8">#</th>
-                        <th className="text-left px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Code</th>
-                        <th className="text-left px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">From Wt</th>
-                        <th className="text-left px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">To Wt</th>
-                        <th className="text-right px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">₹/Carat</th>
-                        <th className="text-right px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Discount</th>
-                        <th className="w-10"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {editingStone.slabs.map((sl, i) => (
-                        <tr key={sl.id} className="border-t border-border hover:bg-muted/20 transition-colors">
-                          <td className="px-3 py-1.5 text-xs text-muted-foreground">{i + 1}</td>
-                          <td className="px-3 py-1.5">
-                            <Input value={sl.code} onChange={(e) => updateSlab(editingStone.id, i, { code: e.target.value })} className="h-7 text-xs" />
-                          </td>
-                          <td className="px-3 py-1.5">
-                            <Input type="number" step="0.0001" value={sl.fromWeight} onChange={(e) => updateSlab(editingStone.id, i, { fromWeight: Number(e.target.value) })} className="h-7 text-xs w-24" />
-                          </td>
-                          <td className="px-3 py-1.5">
-                            <Input type="number" step="0.0001" value={sl.toWeight} onChange={(e) => updateSlab(editingStone.id, i, { toWeight: Number(e.target.value) })} className="h-7 text-xs w-24" />
-                          </td>
-                          <td className="px-3 py-1.5">
-                            <Input type="number" value={sl.pricePerCarat} onChange={(e) => updateSlab(editingStone.id, i, { pricePerCarat: Number(e.target.value) })} className="h-7 text-xs w-24 ml-auto text-right" />
-                          </td>
-                          <td className="px-3 py-1.5">
-                            <Input type="number" value={sl.discount} onChange={(e) => updateSlab(editingStone.id, i, { discount: Number(e.target.value) })} className="h-7 text-xs w-20 ml-auto text-right" />
-                          </td>
-                          <td className="px-3 py-1.5">
-                            <Button variant="ghost" size="sm" onClick={() => removeSlab(editingStone.id, i)} className="h-7 w-7 p-0 text-destructive hover:text-destructive">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          /* Stone list */
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-muted/60">
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Stone</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Type</th>
-                  <th className="text-center px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Slabs</th>
-                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {settings.stoneTypes.map((st) => (
-                  <tr key={st.id} className="border-t border-border hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{st.name}</p>
-                        <p className="text-[11px] text-muted-foreground">{st.stoneId} {st.clarity && `· ${st.clarity}`}</p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge
-                        variant={st.type === "Diamond" ? "default" : "secondary"}
-                        className="text-[10px] font-medium"
-                      >
-                        {st.type}
+                    <div className="flex items-center gap-3 pb-3 border-b border-[hsl(var(--border))]">
+                      <h3 className="text-base font-medium text-[hsl(var(--foreground))]">{editingStone.name}</h3>
+                      <Badge variant="secondary" className="text-xs">
+                        {editingStone.type}
                       </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-center text-sm text-muted-foreground">
-                      {st.slabs.length} {st.slabs.length === 1 ? "Slab" : "Slabs"}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="outline" size="sm" onClick={() => setEditingStoneId(st.id)} className="h-7 text-xs">
-                          <Pencil className="w-3 h-3 mr-1" /> Edit
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => removeStoneType(st.id)} className="h-7 w-7 p-0 text-destructive hover:text-destructive">
-                          <Trash2 className="w-3.5 h-3.5" />
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-[hsl(var(--muted-foreground))]">Name</label>
+                        <Input
+                          value={editingStone.name}
+                          onChange={(e) => updateStoneType(editingStone.stoneId, { name: e.target.value })}
+                          className="h-9 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-[hsl(var(--muted-foreground))]">Stone ID</label>
+                        <Input
+                          value={editingStone.stoneId}
+                          onChange={(e) => updateStoneType(editingStone.stoneId, { stoneId: e.target.value })}
+                          className="h-9 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-[hsl(var(--muted-foreground))]">Clarity</label>
+                        <Input
+                          value={editingStone.clarity}
+                          onChange={(e) => updateStoneType(editingStone.stoneId, { clarity: e.target.value })}
+                          className="h-9 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-[hsl(var(--muted-foreground))]">Type</label>
+                        <Select
+                          value={editingStone.type}
+                          onValueChange={(v) => updateStoneType(editingStone.stoneId, { type: v as "Diamond" | "Gemstone" })}
+                        >
+                          <SelectTrigger className="h-9 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Diamond">Diamond</SelectItem>
+                            <SelectItem value="Gemstone">Gemstone</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-medium text-[hsl(var(--foreground))]">Pricing Slabs</h4>
+                          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                            {editingStone.slabs.length} {editingStone.slabs.length === 1 ? "slab" : "slabs"} defined
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => addSlab(editingStone.stoneId)}
+                          className="h-8 text-xs gap-1 hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Add Slab
                         </Button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-    </div>
+
+                      {editingStone.slabs.length === 0 ? (
+                        <div className="text-center py-6 bg-[hsl(var(--muted))] rounded-md">
+                          <p className="text-sm text-[hsl(var(--muted-foreground))]">No slabs configured</p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => addSlab(editingStone.stoneId)}
+                            className="mt-2 hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                          >
+                            <Plus className="w-3.5 h-3.5 mr-1" />
+                            Add first slab
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {editingStone.slabs.map((sl, i) => (
+                            <motion.div
+                              key={sl.code}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              className="grid grid-cols-6 gap-2 items-end p-3 bg-[hsl(var(--muted))] rounded-md"
+                            >
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-[hsl(var(--muted-foreground))] block">ID</label>
+                                <Input
+                                  value={sl.code}
+                                  onChange={(e) => updateSlab(editingStone.stoneId, i, { code: e.target.value })}
+                                  className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-[hsl(var(--muted-foreground))] block">From (ct)</label>
+                                <Input
+                                  type="number"
+                                  step="0.0001"
+                                  value={sl.fromWeight}
+                                  onChange={(e) => updateSlab(editingStone.stoneId, i, { fromWeight: Number(e.target.value) })}
+                                  className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-[hsl(var(--muted-foreground))] block">To (ct)</label>
+                                <Input
+                                  type="number"
+                                  step="0.0001"
+                                  value={sl.toWeight}
+                                  onChange={(e) => updateSlab(editingStone.stoneId, i, { toWeight: Number(e.target.value) })}
+                                  className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-[hsl(var(--muted-foreground))] block">₹/Carat</label>
+                                <Input
+                                  type="number"
+                                  value={sl.pricePerCarat}
+                                  onChange={(e) => updateSlab(editingStone.stoneId, i, { pricePerCarat: Number(e.target.value) })}
+                                  className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                                />
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeSlab(editingStone.stoneId, i)}
+                                className="h-8 w-8 p-0 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] hover:bg-transparent"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </motion.div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="list"
+                    className="space-y-2 pt-2"
+                  >
+                    {settings.stoneTypes.length === 0 ? (
+                      <div className="text-center py-6 bg-[hsl(var(--muted))] rounded-md">
+                        <Diamond className="w-8 h-8 text-[hsl(var(--muted-foreground))] mx-auto mb-2" />
+                        <p className="text-sm text-[hsl(var(--muted-foreground))]">No stone types configured</p>
+                        <Button variant="ghost" size="sm" onClick={addStoneType} className="mt-2 text-[hsl(var(--foreground))]">
+                          <Plus className="w-3.5 h-3.5 mr-1" />
+                          Add stone type
+                        </Button>
+                      </div>
+                    ) : (
+                      settings.stoneTypes.map((st) => (
+                        <motion.div
+                          key={st.stoneId}
+                          layout
+                          className="flex items-center justify-between p-3 bg-[hsl(var(--muted))] rounded-md group"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Diamond className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+                            <div>
+                              <p className="text-sm font-medium text-[hsl(var(--foreground))]">{st.name}</p>
+                              <p className="text-[11px] text-[hsl(var(--muted-foreground))]">
+                                {st.stoneId} {st.clarity && `· ${st.clarity}`}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Badge variant="secondary" className="text-xs">
+                              {st.type}
+                            </Badge>
+                            <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]">
+                              {st.slabs.length} slabs
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingStoneId(st.stoneId)}
+                                className="h-8 text-xs hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setStoneToDelete(st.stoneId)}
+                                className="h-8 w-8 p-0 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] hover:bg-transparent"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))
+                    )}
+                  </motion.div>
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </CardContent>
+      </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!stoneToDelete} onOpenChange={() => setStoneToDelete(null)}>
+        <AlertDialogContent className="border border-[hsl(var(--border))]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[hsl(var(--foreground))]">Delete Stone Type?</AlertDialogTitle>
+            <AlertDialogDescription className="text-[hsl(var(--muted-foreground))]">
+              This will permanently delete this stone type and all its pricing slabs.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))]">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => stoneToDelete && confirmRemoveStoneType(stoneToDelete)}
+              className="bg-[hsl(var(--foreground))] text-[hsl(var(--background))] hover:bg-[hsl(var(--foreground))]/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </motion.div>
   );
 }

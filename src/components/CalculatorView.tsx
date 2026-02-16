@@ -1,9 +1,17 @@
-import { useState } from "react";
-import { FixedSettings, DiamondEntry, GST_RATE } from "@/lib/types";
+import { useState, useMemo } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { FixedSettings, DiamondEntry, StoneType, Slab } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Gem, CircleDot } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import {
+  Calculator,
+  Diamond,
+  Trash2,
+  Plus,
+} from "lucide-react";
 
 interface CalculatorViewProps {
   settings: FixedSettings;
@@ -13,237 +21,428 @@ function generateId() {
   return Math.random().toString(36).slice(2, 9);
 }
 
+function calculateMakingCharge(netGoldWeight: number, flatRate: number, perGramRate: number): number {
+  if (netGoldWeight <= 0) return 0;
+  if (netGoldWeight <= 2) return flatRate;
+  return netGoldWeight * perGramRate;
+}
+
+function formatCurrency(n: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
+function formatNumber(n: number, decimals = 2) {
+  return new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: decimals,
+  }).format(n);
+}
+
+const GOLD_PURITIES = ["24", "22", "18", "14"];
+
 export default function CalculatorView({ settings }: CalculatorViewProps) {
-  const [grossWeight, setGrossWeight] = useState(0);
-  const [purity, setPurity] = useState("14");
+  const [netGoldWeight, setNetGoldWeight] = useState(0);
+  const [purity, setPurity] = useState("22");
   const [stones, setStones] = useState<DiamondEntry[]>([
-    { id: generateId(), stoneTypeId: settings.stoneTypes[0]?.id ?? "", weight: 0, quantity: 1 },
+    { id: generateId(), stoneTypeId: settings.stoneTypes[0]?.stoneId ?? "", slabId: "", weight: 0, quantity: 1 },
   ]);
 
-  const goldRate = settings.goldRates.find((g) => g.purity === purity);
+  const calculatedGoldRates = useMemo(() => {
+    return GOLD_PURITIES.map((purityVal) => {
+      const percentage = settings.purityPercentages[purityVal] ?? 100;
+      const rate = Math.round(settings.goldRate24k * (percentage / 100));
+      return { purity: purityVal, label: `${purityVal}K`, rate };
+    });
+  }, [settings.goldRate24k, settings.purityPercentages]);
+
+  const goldRate = calculatedGoldRates.find((g) => g.purity === purity);
   const goldRateValue = goldRate?.rate ?? 0;
 
   const totalStoneWeight = stones.reduce((sum, d) => sum + d.weight * d.quantity, 0);
-  const netGoldWeight = Math.max(0, grossWeight - totalStoneWeight);
+  const grossWeight = netGoldWeight + totalStoneWeight;
 
   const goldCost = netGoldWeight * goldRateValue;
-  const makingCost = netGoldWeight * settings.makingCharge;
+  const makingCost = calculateMakingCharge(netGoldWeight, settings.makingChargeFlat, settings.makingChargePerGram);
   const goldPlusMaking = goldCost + makingCost;
 
-  const getStonePrice = (stoneTypeId: string, weight: number) => {
-    const stoneType = settings.stoneTypes.find((s) => s.id === stoneTypeId);
-    if (!stoneType) return 0;
-    const match = stoneType.slabs.find(
-      (sl) => weight >= sl.fromWeight && weight < sl.toWeight
-    );
-    return match?.pricePerCarat ?? 0;
+  const getStonePrice = (stoneTypeId: string, slabId: string) => {
+    const stoneType = settings.stoneTypes.find((s) => s.stoneId === stoneTypeId);
+    if (!stoneType) return { pricePerCarat: 0, slab: null };
+    const slab = stoneType.slabs.find((sl) => sl.code === slabId);
+    return { pricePerCarat: slab?.pricePerCarat ?? 0, slab };
   };
 
   const stoneDetails = stones.map((d) => {
-    const stoneType = settings.stoneTypes.find((s) => s.id === d.stoneTypeId);
-    const pricePerCarat = getStonePrice(d.stoneTypeId, d.weight);
+    const stoneType = settings.stoneTypes.find((s) => s.stoneId === d.stoneTypeId);
+    const { pricePerCarat, slab } = getStonePrice(d.stoneTypeId, d.slabId);
     const totalCost = pricePerCarat * d.weight * d.quantity;
-    return { ...d, stoneType, pricePerCarat, totalCost };
+    return { 
+      ...d, 
+      stoneType, 
+      pricePerCarat, 
+      totalCost,
+      slabInfo: slab ? { code: slab.code, range: `${formatNumber(slab.fromWeight, 4)}-${formatNumber(slab.toWeight, 4)}ct` } : null
+    };
   });
 
   const totalStoneCost = stoneDetails.reduce((s, d) => s + d.totalCost, 0);
   const subTotal = goldPlusMaking + totalStoneCost;
-  const gst = subTotal * GST_RATE;
+  const gst = subTotal * settings.gstRate;
   const total = subTotal + gst;
 
   const addStone = () => {
-    setStones([...stones, { id: generateId(), stoneTypeId: settings.stoneTypes[0]?.id ?? "", weight: 0, quantity: 1 }]);
+    setStones([...stones, { id: generateId(), stoneTypeId: settings.stoneTypes[0]?.stoneId ?? "", slabId: "", weight: 0, quantity: 1 }]);
   };
 
   const removeStone = (id: string) => {
-    if (stones.length > 1) setStones(stones.filter((d) => d.id !== id));
+    if (stones.length > 1) {
+      setStones(stones.filter((d) => d.id !== id));
+    }
   };
 
   const updateStone = (id: string, field: keyof DiamondEntry, value: string | number) => {
     setStones(stones.map((d) => (d.id === id ? { ...d, [field]: value } : d)));
   };
 
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(n);
+  const getStoneSlabs = (stoneTypeId: string): Slab[] => {
+    const stoneType = settings.stoneTypes.find((s) => s.stoneId === stoneTypeId);
+    return stoneType?.slabs ?? [];
+  };
+
+  const handleStoneTypeChange = (id: string, value: string) => {
+    const stoneSlabs = getStoneSlabs(value);
+    const defaultSlabId = stoneSlabs[0]?.code ?? "";
+    setStones(stones.map((d) => (d.id === id ? { ...d, stoneTypeId: value, slabId: defaultSlabId } : d)));
+  };
 
   return (
-    <div className="space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      className="space-y-4"
+    >
       {/* Input Section */}
-      <section className="bg-card border border-border rounded-xl p-5 space-y-5">
-        <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-          <Gem className="w-4 h-4 text-muted-foreground" /> Jewelry Details
-        </h2>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block uppercase tracking-wider">Gross Weight (g)</label>
-            <Input
-              type="number"
-              step="0.01"
-              value={grossWeight || ""}
-              onChange={(e) => setGrossWeight(Number(e.target.value))}
-              placeholder="e.g. 9.64"
-              className="h-10"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block uppercase tracking-wider">Gold Purity</label>
-            <Select value={purity} onValueChange={setPurity}>
-              <SelectTrigger className="h-10">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {settings.goldRates.map((g) => (
-                  <SelectItem key={g.purity} value={g.purity}>
-                    {g.label} — ₹{fmt(g.rate)}/g
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {/* Stones */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Stones</label>
-            <Button variant="outline" size="sm" onClick={addStone} className="h-7 text-xs">
-              <Plus className="w-3.5 h-3.5 mr-1" /> Add Stone
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {stones.map((d, i) => (
-              <div key={d.id} className="flex items-end gap-2 bg-muted/40 p-3 rounded-lg border border-border/50">
-                <span className="text-[11px] text-muted-foreground pb-2.5 font-mono min-w-[18px]">{i + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <label className="text-[10px] text-muted-foreground mb-1 block uppercase tracking-wider">Stone Type</label>
-                  <Select value={d.stoneTypeId} onValueChange={(v) => updateStone(d.id, "stoneTypeId", v)}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Select stone" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {settings.stoneTypes.map((st) => (
-                        <SelectItem key={st.id} value={st.id}>
-                          {st.name} ({st.slabs.length} slabs)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="w-24">
-                  <label className="text-[10px] text-muted-foreground mb-1 block uppercase tracking-wider">Weight (ct)</label>
-                  <Input
-                    type="number"
-                    step="0.001"
-                    value={d.weight || ""}
-                    onChange={(e) => updateStone(d.id, "weight", Number(e.target.value))}
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <div className="w-16">
-                  <label className="text-[10px] text-muted-foreground mb-1 block uppercase tracking-wider">Qty</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={d.quantity}
-                    onChange={(e) => updateStone(d.id, "quantity", Number(e.target.value))}
-                    className="h-8 text-xs"
-                  />
-                </div>
-                <Button variant="ghost" size="sm" className="text-destructive h-8 w-8 p-0 mb-0" onClick={() => removeStone(d.id)}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Breakdown */}
-      <section>
-        <h2 className="text-base font-semibold text-foreground mb-3 flex items-center gap-2">
-          <CircleDot className="w-4 h-4 text-muted-foreground" /> Price Breakdown
-        </h2>
-        <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-          {/* Gold section */}
-          <div className="border-b border-border">
-            <div className="px-4 py-2 bg-muted/40">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Gold Details</p>
-            </div>
-            <div className="divide-y divide-border/60">
-              <Row label={`Gold Rate (${goldRate?.label})`} value={`₹${fmt(goldRateValue)}/g`} />
-              <Row label="Gross Weight" value={`${fmt(grossWeight)} g`} />
-              <Row label="Net Gold Weight" value={`${fmt(netGoldWeight)} g`} sub />
-              <Row label={`Gold Cost (${fmt(netGoldWeight)}g × ₹${fmt(goldRateValue)})`} value={`₹${fmt(goldCost)}`} />
-              <Row label={`Making Charge (${fmt(netGoldWeight)}g × ₹${fmt(settings.makingCharge)})`} value={`₹${fmt(makingCost)}`} />
-              <Row label="Gold + Making" value={`₹${fmt(goldPlusMaking)}`} bold highlight />
-            </div>
+      <Card className="border border-[hsl(var(--border))]">
+        <CardContent className="p-4 space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Calculator className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
+            <h2 className="text-sm font-medium text-[hsl(var(--foreground))]">Jewelry Details</h2>
           </div>
 
-          {/* Stone section */}
-          <div className="border-b border-border">
-            <div className="px-4 py-2 bg-muted/40">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Stone Details</p>
-            </div>
-            <div className="divide-y divide-border/60">
-              {stoneDetails.map((d, i) => (
-                <Row
-                  key={d.id}
-                  label={
-                    <span>
-                      <span className="font-medium">{d.stoneType?.name ?? "Unknown"}</span>
-                      <span className="text-muted-foreground"> — {d.weight}ct × {d.quantity} @ ₹{fmt(d.pricePerCarat)}/ct</span>
-                    </span>
-                  }
-                  value={`₹${fmt(d.totalCost)}`}
+          {/* Gold Section */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wide">
+                Net Gold Weight (g)
+              </label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={netGoldWeight || ""}
+                  onChange={(e) => setNetGoldWeight(Number(e.target.value))}
+                  placeholder="0.00"
+                  className="h-9 pr-4 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))] transition-colors"
                 />
-              ))}
-              <Row label={`Total Stone Cost (${fmt(totalStoneWeight)} ct)`} value={`₹${fmt(totalStoneCost)}`} bold highlight />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wide">
+                Gold Purity
+              </label>
+              <Select value={purity} onValueChange={setPurity}>
+                <SelectTrigger className="h-9 border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {calculatedGoldRates.map((g) => (
+                    <SelectItem key={g.purity} value={g.purity}>
+                      <div className="flex items-center justify-between w-full gap-6">
+                        <span className="text-sm">{g.label}</span>
+                        <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]">
+                          {formatCurrency(g.rate)}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
+
+          {/* Stones */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wide">
+                Stones
+              </label>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={addStone} 
+                className="h-7 text-xs gap-1.5 hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Stone
+              </Button>
+            </div>
+
+            <AnimatePresence mode="popLayout">
+              <div className="space-y-2">
+                {stones.map((d, i) => {
+                  const stoneSlabs = getStoneSlabs(d.stoneTypeId);
+                  return (
+                    <motion.div
+                      key={d.id}
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.15 }}
+                      className="flex items-end gap-2 p-3 bg-[hsl(var(--muted))] rounded-md flex-wrap"
+                    >
+                      <span className="text-xs font-mono text-[hsl(var(--muted-foreground))] w-5">
+                        {i + 1}
+                      </span>
+                      
+                      <div className="flex-1 min-w-[140px] space-y-1">
+                        <label className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wide block">
+                          Stone Type
+                        </label>
+                        <Select 
+                          value={d.stoneTypeId} 
+                          onValueChange={(v) => handleStoneTypeChange(d.id, v)}
+                        >
+                          <SelectTrigger className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]">
+                            <SelectValue placeholder="Select stone" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {settings.stoneTypes.map((st) => (
+                              <SelectItem key={st.stoneId} value={st.stoneId}>
+                                <div className="flex items-center gap-2">
+                                  {st.type === "Diamond" ? (
+                                    <Diamond className="w-3 h-3" />
+                                  ) : (
+                                    <span className="w-3 h-3 rounded-full bg-[hsl(var(--muted-foreground))]" />
+                                  )}
+                                  <span className="text-sm">{st.name}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex-1 min-w-[140px] space-y-1">
+                        <label className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wide block">
+                          Slab
+                        </label>
+                        <Select 
+                          value={d.slabId} 
+                          onValueChange={(v) => updateStone(d.id, "slabId", v)}
+                        >
+                          <SelectTrigger className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]">
+                            <SelectValue placeholder="Select slab" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {stoneSlabs.map((sl) => (
+                              <SelectItem key={sl.code} value={sl.code}>
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="text-xs">{formatNumber(sl.fromWeight, 3)}-{formatNumber(sl.toWeight, 3)} ct</span>
+                                  <span className="text-xs text-[hsl(var(--muted-foreground))]">{sl.code}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="w-20 space-y-1">
+                        <label className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wide block">
+                          Net Wt
+                        </label>
+                        <div className="relative">
+                          <Input
+                            type="number"
+                            step="0.001"
+                            value={d.weight || ""}
+                            onChange={(e) => updateStone(d.id, "weight", Number(e.target.value))}
+                            className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 pr-4 text-right focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="w-14 space-y-1">
+                        <label className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wide block">
+                          Pcs
+                        </label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={d.quantity}
+                          onChange={(e) => updateStone(d.id, "quantity", Number(e.target.value))}
+                          className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 text-center focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                        />
+                      </div>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeStone(d.id)}
+                        disabled={stones.length <= 1}
+                        className="h-8 w-8 p-0 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] hover:bg-transparent disabled:opacity-30"
+                        aria-label="Remove stone"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </AnimatePresence>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Price Breakdown */}
+      <Card className="border border-[hsl(var(--border))]">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-2 mb-2">
+            <h2 className="text-sm font-medium text-[hsl(var(--foreground))]">Price Breakdown</h2>
+          </div>
+
+          {/* Gross Weight */}
+          <div className="flex justify-between items-center py-2 px-3 bg-[hsl(var(--muted))] rounded-md">
+            <span className="text-sm text-[hsl(var(--muted-foreground))]">Gross Weight</span>
+            <span className="text-sm font-mono text-[hsl(var(--foreground))]">{formatNumber(grossWeight)} g</span>
+          </div>
+
+          <Separator />
+
+          {/* Gold Section */}
+          <div className="space-y-2">
+            <h3 className="text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wide px-1">
+              Gold
+            </h3>
+            <div className="grid grid-cols-3 gap-2 py-2 px-3 bg-[hsl(var(--muted))] rounded-md">
+              <div>
+                <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wide block">
+                  Net Wt
+                </span>
+                <span className="text-sm font-mono text-[hsl(var(--foreground))]">{formatNumber(netGoldWeight)} g</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wide block">
+                  Purity
+                </span>
+                <span className="text-sm font-mono text-[hsl(var(--foreground))]">{purity}K</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-[hsl(var(--muted-foreground))] uppercase tracking-wide block">
+                  Rate
+                </span>
+                <span className="text-sm font-mono text-[hsl(var(--foreground))]">{formatCurrency(goldRateValue)}</span>
+              </div>
+            </div>
+            <div className="flex justify-between items-center py-1 px-1">
+              <span className="text-sm text-[hsl(var(--foreground))]">Gold Cost</span>
+              <span className="text-sm font-mono text-[hsl(var(--foreground))]">{formatCurrency(goldCost)}</span>
+            </div>
+          </div>
+
+          {/* Making Charges */}
+          <div className="flex justify-between items-center py-2 px-3 bg-[hsl(var(--muted))] rounded-md">
+            <div>
+              <span className="text-sm text-[hsl(var(--foreground))]">Making Charges</span>
+              <span className="text-[10px] text-[hsl(var(--muted-foreground))] block">
+                {netGoldWeight <= 2 && netGoldWeight > 0 
+                  ? `Flat rate (≤2g)` 
+                  : netGoldWeight > 2 
+                    ? `${formatNumber(netGoldWeight)}g × ${formatCurrency(settings.makingChargePerGram)}` 
+                    : ''}
+              </span>
+            </div>
+            <span className="text-sm font-mono text-[hsl(var(--foreground))]">{formatCurrency(makingCost)}</span>
+          </div>
+
+          <Separator />
+
+          {/* Stones Section */}
+          <div className="space-y-2">
+            <h3 className="text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wide px-1">
+              Stones
+            </h3>
+            {stoneDetails.length > 0 ? (
+              stoneDetails.map((d) => (
+                <div key={d.id} className="flex justify-between items-center py-1 px-2">
+                  <div>
+                    <span className="text-sm text-[hsl(var(--foreground))]">
+                      {d.stoneType?.name ?? "Unknown"}
+                    </span>
+                    {d.slabInfo && (
+                      <span className="text-[10px] text-[hsl(var(--muted-foreground))] block">
+                        {d.slabInfo.code} · {d.slabInfo.range}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                      {formatNumber(d.weight)}ct × {d.quantity} pcs
+                    </span>
+                  </div>
+                  <span className="text-sm font-mono text-[hsl(var(--foreground))]">
+                    {formatCurrency(d.totalCost)}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-[hsl(var(--muted-foreground))] py-2 px-2">No stones added</p>
+            )}
+            {totalStoneCost > 0 && (
+              <div className="flex justify-between items-center py-1 px-2">
+                <span className="text-sm text-[hsl(var(--foreground))] font-medium">Total Stones</span>
+                <span className="text-sm font-mono text-[hsl(var(--foreground))] font-medium">
+                  {formatCurrency(totalStoneCost)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <Separator />
 
           {/* Totals */}
-          <div className="divide-y divide-border/60">
-            <Row label="Sub Total" value={`₹${fmt(subTotal)}`} bold />
-            <Row label="GST (3%)" value={`₹${fmt(gst)}`} />
+          <div className="space-y-2 py-2">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-[hsl(var(--foreground))]">Subtotal</span>
+              <span className="text-sm font-mono text-[hsl(var(--foreground))]">{formatCurrency(subTotal)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-[hsl(var(--muted-foreground))]">GST ({settings.gstRate * 100}%)</span>
+              <span className="text-sm font-mono text-[hsl(var(--muted-foreground))]">{formatCurrency(gst)}</span>
+            </div>
           </div>
 
-          {/* Grand total */}
-          <div className="bg-primary text-primary-foreground px-5 py-4 flex justify-between items-center">
-            <span className="text-base font-bold tracking-wide">TOTAL</span>
-            <span className="text-xl font-bold tabular-nums">₹{fmt(total)}</span>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function Row({
-  label,
-  value,
-  bold,
-  highlight,
-  sub,
-}: {
-  label: React.ReactNode;
-  value: string;
-  bold?: boolean;
-  highlight?: boolean;
-  sub?: boolean;
-}) {
-  return (
-    <div
-      className={`flex justify-between items-center px-4 py-2.5 text-sm ${
-        highlight ? "bg-muted/30" : ""
-      }`}
-    >
-      <span className={`${bold ? "font-semibold text-foreground" : "text-muted-foreground"} ${sub ? "pl-3 text-xs italic" : ""}`}>
-        {label}
-      </span>
-      <span className={`tabular-nums ${bold ? "font-semibold text-foreground" : "font-medium text-foreground"}`}>
-        {value}
-      </span>
-    </div>
+          {/* Grand Total */}
+          <motion.div
+            className="bg-[hsl(var(--foreground))] text-[hsl(var(--background))] -mx-4 -mb-4 px-4 py-3 flex justify-between items-center mt-2"
+            initial={false}
+            animate={{ scale: 1 }}
+            transition={{ type: "spring", stiffness: 400, damping: 17 }}
+          >
+            <span className="text-sm font-medium">Total</span>
+            <motion.span
+              key={total}
+              initial={{ opacity: 0.7 }}
+              animate={{ opacity: 1 }}
+              className="text-xl font-bold font-mono"
+            >
+              {formatCurrency(total)}
+            </motion.span>
+          </motion.div>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }

@@ -7,8 +7,12 @@ function isValidSettings(obj: any): obj is FixedSettings {
   return (
     obj &&
     typeof obj === "object" &&
+    typeof obj.goldRate24k === "number" &&
     Array.isArray(obj.goldRates) &&
-    typeof obj.makingCharge === "number" &&
+    typeof obj.purityPercentages === "object" &&
+    typeof obj.makingChargeFlat === "number" &&
+    typeof obj.makingChargePerGram === "number" &&
+    typeof obj.gstRate === "number" &&
     Array.isArray(obj.stoneTypes)
   );
 }
