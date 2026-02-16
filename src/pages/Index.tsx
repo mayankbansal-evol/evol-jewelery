@@ -28,9 +28,7 @@ const Index = () => {
         <div className="max-w-2xl mx-auto px-5 h-14 flex items-center justify-between">
           {/* Brand */}
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 bg-[hsl(var(--foreground))] rounded-lg flex items-center justify-center">
-              <Gem className="w-3.5 h-3.5 text-[hsl(var(--background))]" />
-            </div>
+            <img src="/evol-logo.webp" alt="Evol" className="h-7 w-auto" />
             <span className="text-sm font-semibold tracking-tight text-[hsl(var(--foreground))]">
               Jewelry Calculator
             </span>

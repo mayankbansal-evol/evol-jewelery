@@ -1,6 +1,8 @@
 import { useState, useMemo, useCallback, useRef } from "react";
+import { toPng } from "html-to-image";
 import { motion, AnimatePresence } from "motion/react";
 import { FixedSettings, DiamondEntry, Slab } from "@/lib/types";
+import { useCalculatorState } from "@/hooks/useCalculatorState";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -20,6 +22,8 @@ import {
   CheckCircle2,
   ImageIcon,
   X,
+  Download,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -108,6 +112,7 @@ function BigInput({
   placeholder,
   type = "text",
   step,
+  min,
   autoFocus,
   suffix,
   className,
@@ -117,6 +122,7 @@ function BigInput({
   placeholder?: string;
   type?: string;
   step?: string;
+  min?: string;
   autoFocus?: boolean;
   suffix?: string;
   className?: string;
@@ -127,7 +133,8 @@ function BigInput({
       <input
         type={type}
         step={step}
-        value={value === 0 ? "" : value}
+        min={min}
+        value={value}
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -359,7 +366,8 @@ function StoneRow({
             <input
               type="number"
               step="0.001"
-              value={stone.weight === 0 ? "" : stone.weight}
+              min="0.001"
+              value={stone.weight}
               onChange={(e) => onWeightChange(e.target.value)}
               onFocus={() => setWeightFocused(true)}
               onBlur={() => setWeightFocused(false)}
@@ -592,21 +600,58 @@ function ResultsStep({
 }) {
   const hasStones = data.stoneDetails.some((d) => d.weight > 0);
   const displayName = data.productName.trim() || "Untitled Piece";
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (!cardRef.current) return;
+    setIsDownloading(true);
+    try {
+      const slug = data.productName.trim().replace(/\s+/g, "-").toLowerCase() || "summary";
+      const date = new Date().toISOString().slice(0, 10);
+      const dataUrl = await toPng(cardRef.current, { pixelRatio: 2 });
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `jewelry-${slug}-${date}.png`;
+      a.click();
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   return (
     <div>
       {/* Step heading */}
-      <div className="mb-5">
-        <h2 className="text-[1.6rem] font-semibold leading-tight text-[hsl(var(--foreground))]">
-          Summary
-        </h2>
-        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
-          Full cost breakdown for this piece
-        </p>
+      <div className="flex items-start justify-between mb-5">
+        <div>
+          <h2 className="text-[1.6rem] font-semibold leading-tight text-[hsl(var(--foreground))]">
+            Summary
+          </h2>
+          <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
+            Full cost breakdown for this jewelry
+          </p>
+        </div>
+        <button
+          onClick={handleDownload}
+          disabled={isDownloading}
+          title="Download summary"
+          className="w-8 h-8 rounded-lg border border-[hsl(var(--border))] flex items-center justify-center text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--foreground))] transition-all disabled:opacity-40 shrink-0 mt-1"
+        >
+          {isDownloading
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            : <Download className="w-3.5 h-3.5" />
+          }
+        </button>
       </div>
 
       {/* ── The single summary card ── */}
-      <div className="rounded-xl border border-[hsl(var(--border))] overflow-hidden">
+      <div ref={cardRef} className="rounded-xl border border-[hsl(var(--border))] overflow-hidden bg-[hsl(var(--card))]">
+
+        {/* Branding header */}
+        <div className="flex items-center justify-center gap-2 py-3 border-b border-[hsl(var(--border))]">
+          <img src="/evol-logo.webp" alt="Evol" className="h-6 w-auto" />
+          <span className="text-sm font-semibold text-[hsl(var(--foreground))]">Evol Jewels</span>
+        </div>
 
         {/* Product header */}
         <div className="grid grid-cols-2">
@@ -847,23 +892,26 @@ function ResultsStep({
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function CalculatorView({ settings }: CalculatorViewProps) {
-  // ── Data state ──
-  const [netGoldWeight, setNetGoldWeight] = useState(0);
-  const [purity, setPurity] = useState("22");
-  const [stones, setStones] = useState<DiamondEntry[]>([
-    {
-      id: generateId(),
-      stoneTypeId: settings.stoneTypes[0]?.stoneId ?? "",
-      slabId: settings.stoneTypes[0]?.slabs[0]?.code ?? "",
-      weight: 0,
-      quantity: 1,
-    },
-  ]);
+  // ── Data state (persisted) ──
+  const { 
+    formState, 
+    updateNetGoldWeight, 
+    updatePurity, 
+    updateStones,
+    updateProductName,
+    updateProductNote,
+  } = useCalculatorState({ stoneTypes: settings.stoneTypes });
 
-  // ── Product state ──
-  const [productName, setProductName] = useState("");
+  const { netGoldWeight, purity, stones, productName, productNote } = formState;
+
+  const setNetGoldWeight = updateNetGoldWeight;
+  const setPurity = updatePurity;
+  const setStones = updateStones;
+  const setProductName = updateProductName;
+  const setProductNote = updateProductNote;
+
+  // ── Product state (not persisted - image is objectURL) ──
   const [productImageUrl, setProductImageUrl] = useState<string | null>(null);
-  const [productNote, setProductNote] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Stepper state ──
@@ -1007,7 +1055,7 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
   };
 
   // ── Validation ──
-  const step1Valid = netGoldWeight > 0;
+  const step1Valid = netGoldWeight >= 0;
   const stonesValid =
     stones.length > 0 &&
     stones.some((s) => s.weight > 0) &&
@@ -1044,7 +1092,8 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
 
       <BigInput
         type="number"
-        step="0.01"
+        step="0.001"
+        min="0.001"
         value={netGoldWeight}
         onChange={(v) => setNetGoldWeight(Number(v))}
         placeholder="0.00"
