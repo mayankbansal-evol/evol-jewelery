@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { toPng } from "html-to-image";
 import { motion, AnimatePresence } from "motion/react";
 import { FixedSettings, DiamondEntry, Slab } from "@/lib/types";
@@ -14,7 +14,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 import {
   ChevronLeft,
-  ChevronRight,
   Diamond,
   Plus,
   Trash2,
@@ -24,12 +23,15 @@ import {
   X,
   Download,
   Loader2,
+  CircleDollarSign,
+  Gem,
+  Package,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TOTAL_STEPS = 4;
 const GOLD_PURITIES = ["24", "22", "18", "14"];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -50,7 +52,7 @@ function calculateMakingCharge(
   perGramRate: number
 ): number {
   if (netGoldWeight <= 0) return 0;
-  if (netGoldWeight <= 2) return flatRate;
+  if (netGoldWeight < 2) return flatRate;
   return netGoldWeight * perGramRate;
 }
 
@@ -68,40 +70,88 @@ function formatNumber(n: number, decimals = 2) {
   }).format(n);
 }
 
-// ─── Shared UI primitives ─────────────────────────────────────────────────────
+// ─── UI Components ─────────────────────────────────────────────────────────────
 
-function ProgressBar({ current, total }: { current: number; total: number }) {
-  const pct = total <= 1 ? 100 : Math.round((current / (total - 1)) * 100);
+function ValidationMessage({ message }: { message: string | null }) {
   return (
-    <div className="absolute top-0 left-0 right-0 h-[2px] bg-[hsl(var(--border))] overflow-hidden">
-      <motion.div
-        className="h-full bg-[hsl(var(--foreground))]"
-        initial={{ width: "0%" }}
-        animate={{ width: `${pct}%` }}
-        transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-      />
+    <AnimatePresence>
+      {message && (
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          className="flex items-center gap-1.5 text-xs text-[hsl(var(--destructive))] mt-1.5"
+        >
+          <AlertCircle className="w-3.5 h-3.5" />
+          <span>{message}</span>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function SectionHeader({
+  icon: Icon,
+  title,
+  isComplete,
+}: {
+  icon: React.ElementType;
+  title: string;
+  isComplete: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-lg bg-[hsl(var(--muted))] flex items-center justify-center">
+          <Icon className="w-3.5 h-3.5 text-[hsl(var(--muted-foreground))]" />
+        </div>
+        <span className="text-xs font-semibold tracking-widest uppercase text-[hsl(var(--foreground))]">
+          {title}
+        </span>
+      </div>
+      {isComplete && (
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ type: "spring", stiffness: 500, damping: 25 }}
+        >
+          <CheckCircle2 className="w-4 h-4 text-[hsl(var(--foreground))]" />
+        </motion.div>
+      )}
     </div>
   );
 }
 
-function StepPill({
-  current,
-  total,
-  label,
+function ProgressIndicator({
+  sections,
 }: {
-  current: number;
-  total: number;
-  label: string;
+  sections: { label: string; isComplete: boolean }[];
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-[11px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]">
-        {current} / {total}
-      </span>
-      <span className="text-[11px] text-[hsl(var(--muted-foreground))]/50">·</span>
-      <span className="text-[11px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]">
-        {label}
-      </span>
+    <div className="flex items-center justify-center gap-2 py-4">
+      {sections.map((section, index) => (
+        <div key={section.label} className="flex items-center gap-2">
+          <motion.div
+            className={cn(
+              "w-2 h-2 rounded-full transition-colors duration-300",
+              section.isComplete
+                ? "bg-[hsl(var(--foreground))]"
+                : "border border-[hsl(var(--border))]"
+            )}
+            initial={false}
+            animate={{
+              scale: section.isComplete ? 1.2 : 1,
+              backgroundColor: section.isComplete
+                ? "hsl(var(--foreground))"
+                : "transparent",
+            }}
+            transition={{ type: "spring", stiffness: 500, damping: 25 }}
+          />
+          {index < sections.length - 1 && (
+            <div className="w-8 h-[1px] bg-[hsl(var(--border))]" />
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -198,57 +248,6 @@ function PurityCard({
   );
 }
 
-function NavRow({
-  onPrev,
-  onNext,
-  nextLabel = "Next",
-  nextDisabled = false,
-  hint,
-}: {
-  onPrev?: () => void;
-  onNext?: () => void;
-  nextLabel?: string;
-  nextDisabled?: boolean;
-  hint?: string;
-}) {
-  return (
-    <div className="space-y-2 pt-2">
-      <div className="flex items-center gap-3">
-        {onPrev ? (
-          <button
-            onClick={onPrev}
-            className="flex items-center gap-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Back
-          </button>
-        ) : (
-          <div />
-        )}
-        <div className="flex-1" />
-        <Button
-          onClick={onNext}
-          disabled={nextDisabled || !onNext}
-          className={cn(
-            "h-11 px-6 text-sm gap-1.5 transition-all",
-            !nextDisabled && onNext
-              ? "bg-[hsl(var(--foreground))] text-[hsl(var(--background))] hover:bg-[hsl(var(--foreground))]/90"
-              : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] cursor-not-allowed"
-          )}
-        >
-          {nextLabel}
-          <ChevronRight className="w-4 h-4" />
-        </Button>
-      </div>
-      {hint && (
-        <p className="text-xs text-[hsl(var(--muted-foreground))] text-right">
-          {hint}
-        </p>
-      )}
-    </div>
-  );
-}
-
 // ─── Stone row ────────────────────────────────────────────────────────────────
 
 function StoneRow({
@@ -262,6 +261,8 @@ function StoneRow({
   onWeightChange,
   onQtyChange,
   onRemove,
+  touched,
+  onTouch,
 }: {
   stone: DiamondEntry;
   index: number;
@@ -273,9 +274,18 @@ function StoneRow({
   onWeightChange: (v: string) => void;
   onQtyChange: (v: string) => void;
   onRemove: () => void;
+  touched: boolean;
+  onTouch: () => void;
 }) {
   const [weightFocused, setWeightFocused] = useState(false);
   const [qtyFocused, setQtyFocused] = useState(false);
+
+  const stoneError = touched && stone.weight > 0 && !stone.slabId
+    ? "Select a slab for this stone"
+    : null;
+  const weightError = touched && stone.slabId && stone.weight <= 0
+    ? "Enter stone weight"
+    : null;
 
   return (
     <motion.div
@@ -333,7 +343,7 @@ function StoneRow({
           </label>
           <Select
             value={stone.slabId}
-            onValueChange={onSlabChange}
+            onValueChange={(v) => { onSlabChange(v); onTouch(); }}
             disabled={!stone.stoneTypeId || stoneSlabs.length === 0}
           >
             <SelectTrigger className="h-9 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))] transition-colors disabled:opacity-40">
@@ -354,6 +364,7 @@ function StoneRow({
               ))}
             </SelectContent>
           </Select>
+          <ValidationMessage message={stoneError} />
         </div>
       </div>
 
@@ -368,7 +379,7 @@ function StoneRow({
               step="0.001"
               min="0.001"
               value={stone.weight}
-              onChange={(e) => onWeightChange(e.target.value)}
+              onChange={(e) => { onWeightChange(e.target.value); onTouch(); }}
               onFocus={() => setWeightFocused(true)}
               onBlur={() => setWeightFocused(false)}
               placeholder="0.000"
@@ -385,6 +396,7 @@ function StoneRow({
               ct
             </span>
           </div>
+          <ValidationMessage message={weightError} />
         </div>
 
         <div className="space-y-1">
@@ -413,19 +425,17 @@ function StoneRow({
   );
 }
 
-// ─── Product step (Step 3) ───────────────────────────────────────────────────
+// ─── Product Section ──────────────────────────────────────────────────────────
 
-function ProductStep({
+function ProductSection({
   productName,
   productImageUrl,
   productNote,
   fileInputRef,
   onNameChange,
   onNoteChange,
-  onImageSelect,
+  onImageFile,
   onRemoveImage,
-  onPrev,
-  onNext,
 }: {
   productName: string;
   productImageUrl: string | null;
@@ -433,41 +443,72 @@ function ProductStep({
   fileInputRef: React.RefObject<HTMLInputElement>;
   onNameChange: (v: string) => void;
   onNoteChange: (v: string) => void;
-  onImageSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onImageFile: (file: File) => void;
   onRemoveImage: () => void;
-  onPrev: () => void;
-  onNext: () => void;
 }) {
+  const [isDragOver, setIsDragOver] = useState(false);
   const [nameFocused, setNameFocused] = useState(false);
   const [noteFocused, setNoteFocused] = useState(false);
 
-  return (
-    <div className="space-y-7">
-      <div>
-        <h2 className="text-[1.6rem] font-semibold leading-tight text-[hsl(var(--foreground))]">
-          Product details
-        </h2>
-        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1.5">
-          Optional — appears on the summary
-        </p>
-      </div>
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            onImageFile(file);
+            break;
+          }
+        }
+      }
+    };
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [onImageFile]);
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) onImageFile(file);
+  }, [onImageFile]);
+
+  return (
+    <div className="space-y-4">
       {/* Image */}
       <div className="space-y-2">
-        <label className="text-[11px] font-semibold tracking-widest uppercase text-[hsl(var(--muted-foreground))]">
-          Product Image
-        </label>
-
         {productImageUrl ? (
           <div className="flex items-center gap-4">
-            <div className="relative w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-[hsl(var(--muted))]">
+            <div
+              className="relative w-20 h-20 rounded-xl overflow-hidden shrink-0 bg-[hsl(var(--muted))] cursor-pointer group"
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+            >
               <img
                 src={productImageUrl}
                 alt="Product"
                 className="w-full h-full object-cover"
               />
+              <div className="absolute inset-0 bg-[hsl(var(--foreground))]/0 group-hover:bg-[hsl(var(--foreground))]/20 transition-colors" />
               <button
-                onClick={onRemoveImage}
+                onClick={(e) => { e.stopPropagation(); onRemoveImage(); }}
                 className="absolute top-1 right-1 w-5 h-5 rounded-full bg-[hsl(var(--foreground))]/70 text-[hsl(var(--background))] flex items-center justify-center hover:bg-[hsl(var(--foreground))] transition-colors"
               >
                 <X className="w-3 h-3" />
@@ -481,32 +522,53 @@ function ProductStep({
             </button>
           </div>
         ) : (
-          <button
+          <motion.div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
             onClick={() => fileInputRef.current?.click()}
+            animate={{
+              scale: isDragOver ? 1.02 : 1,
+              borderColor: isDragOver ? "hsl(var(--foreground))" : "hsl(var(--border))",
+              backgroundColor: isDragOver ? "hsl(var(--foreground) / 0.05)" : "transparent",
+            }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
             className={cn(
-              "w-full h-24 rounded-xl border-2 border-dashed transition-colors",
+              "w-full h-20 rounded-xl border-2 border-dashed cursor-pointer",
               "flex flex-col items-center justify-center gap-1.5 focus:outline-none",
-              "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]",
-              "border-[hsl(var(--border))] hover:border-[hsl(var(--foreground))]/40"
+              "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
             )}
           >
-            <ImageIcon className="w-5 h-5" />
-            <span className="text-xs">Click to upload image</span>
-          </button>
+            <motion.div
+              animate={{ scale: isDragOver ? 1.1 : 1 }}
+              transition={{ duration: 0.15 }}
+            >
+              <ImageIcon className="w-5 h-5" />
+            </motion.div>
+            <div className="text-center">
+              <span className="text-xs font-medium">
+                {isDragOver ? "Drop image here" : "Drag, paste, or click"}
+              </span>
+            </div>
+          </motion.div>
         )}
 
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*"
-          onChange={onImageSelect}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) onImageFile(file);
+            e.target.value = "";
+          }}
           className="hidden"
         />
       </div>
 
       {/* Name */}
-      <div className="space-y-2">
-        <label className="text-[11px] font-semibold tracking-widest uppercase text-[hsl(var(--muted-foreground))]">
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/70">
           Product Name
         </label>
         <input
@@ -517,7 +579,7 @@ function ProductStep({
           onBlur={() => setNameFocused(false)}
           placeholder="e.g. Solitaire Ring"
           className={cn(
-            "w-full bg-transparent text-xl font-light text-[hsl(var(--foreground))]",
+            "w-full bg-transparent text-lg font-light text-[hsl(var(--foreground))]",
             "placeholder:text-[hsl(var(--muted-foreground))]/30",
             "border-0 border-b-2 pb-2 focus:outline-none transition-colors",
             nameFocused
@@ -528,8 +590,8 @@ function ProductStep({
       </div>
 
       {/* Note */}
-      <div className="space-y-2">
-        <label className="text-[11px] font-semibold tracking-widest uppercase text-[hsl(var(--muted-foreground))]">
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/70">
           Note
         </label>
         <textarea
@@ -538,7 +600,7 @@ function ProductStep({
           onFocus={() => setNoteFocused(true)}
           onBlur={() => setNoteFocused(false)}
           placeholder="Any additional notes…"
-          rows={3}
+          rows={2}
           className={cn(
             "w-full bg-transparent text-sm text-[hsl(var(--foreground))] resize-none",
             "placeholder:text-[hsl(var(--muted-foreground))]/30",
@@ -549,13 +611,277 @@ function ProductStep({
           )}
         />
       </div>
-
-      <NavRow onPrev={onPrev} onNext={onNext} nextLabel="See Summary" />
     </div>
   );
 }
 
-// ─── Results (Step 4) ─────────────────────────────────────────────────────────
+// ─── Form View ─────────────────────────────────────────────────────────────────
+
+interface FormViewProps {
+  settings: FixedSettings;
+  formState: {
+    netGoldWeight: number;
+    purity: string;
+    stones: DiamondEntry[];
+    productName: string;
+    productNote: string;
+  };
+  productImageUrl: string | null;
+  fileInputRef: React.RefObject<HTMLInputElement>;
+  updateNetGoldWeight: (v: number) => void;
+  updatePurity: (v: string) => void;
+  updateStones: React.Dispatch<React.SetStateAction<DiamondEntry[]>>;
+  updateProductName: (v: string) => void;
+  updateProductNote: (v: string) => void;
+  handleImageFile: (file: File) => void;
+  removeImage: () => void;
+  onCalculate: () => void;
+}
+
+function FormView({
+  settings,
+  formState,
+  productImageUrl,
+  fileInputRef,
+  updateNetGoldWeight,
+  updatePurity,
+  updateStones,
+  updateProductName,
+  updateProductNote,
+  handleImageFile,
+  removeImage,
+  onCalculate,
+}: FormViewProps) {
+  const { netGoldWeight, purity, stones, productName, productNote } = formState;
+  const [weightFocused, setWeightFocused] = useState(false);
+  const [weightTouched, setWeightTouched] = useState(false);
+  const [stonesTouched, setStonesTouched] = useState<Record<string, boolean>>({});
+
+  const calculatedGoldRates = useMemo(() => {
+    return GOLD_PURITIES.map((purityVal) => {
+      const percentage = settings.purityPercentages[purityVal] ?? 100;
+      const rate = Math.round(settings.goldRate24k * (percentage / 100));
+      return { purity: purityVal, label: `${purityVal}K`, rate };
+    });
+  }, [settings.goldRate24k, settings.purityPercentages]);
+
+  const getStoneSlabs = useCallback(
+    (stoneTypeId: string): Slab[] =>
+      settings.stoneTypes.find((s) => s.stoneId === stoneTypeId)?.slabs ?? [],
+    [settings.stoneTypes]
+  );
+
+  const updateStone = (id: string, field: keyof DiamondEntry, value: string | number) => {
+    updateStones((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, [field]: value } : d))
+    );
+  };
+
+  const handleStoneTypeChange = (id: string, value: string) => {
+    const slabs = getStoneSlabs(value);
+    updateStones((prev) =>
+      prev.map((d) =>
+        d.id === id ? { ...d, stoneTypeId: value, slabId: slabs[0]?.code ?? "" } : d
+      )
+    );
+  };
+
+  const addStone = () => {
+    updateStones((prev) => [
+      ...prev,
+      {
+        id: generateId(),
+        stoneTypeId: settings.stoneTypes[0]?.stoneId ?? "",
+        slabId: settings.stoneTypes[0]?.slabs[0]?.code ?? "",
+        weight: 0,
+        quantity: 1,
+      },
+    ]);
+  };
+
+  const removeStone = (id: string) => {
+    updateStones((prev) => prev.filter((d) => d.id !== id));
+    setStonesTouched((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const stonesValid =
+    stones.length > 0 &&
+    stones.some((s) => s.weight > 0) &&
+    stones.every((s) => s.weight === 0 || (s.weight > 0 && !!s.slabId));
+
+  const progressSections = [
+    { label: "Gold", isComplete: netGoldWeight > 0 },
+    { label: "Stones", isComplete: stonesValid },
+    { label: "Product", isComplete: !!(productImageUrl || productName.trim()) },
+  ];
+
+  const canCalculate = netGoldWeight > 0 && stonesValid;
+  const weightError = weightTouched && netGoldWeight <= 0 ? "Enter net gold weight" : null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="space-y-0"
+    >
+      <ProgressIndicator sections={progressSections} />
+
+      {/* Gold Section */}
+      <div className="py-6">
+        <SectionHeader
+          icon={CircleDollarSign}
+          title="Gold"
+          isComplete={netGoldWeight > 0}
+        />
+
+        <div className="space-y-6">
+          <div>
+            <label className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/70 mb-1.5 block">
+              Net Weight
+            </label>
+            <div className="flex items-baseline gap-2">
+              <input
+                type="number"
+                step="0.001"
+                min="0.001"
+                value={netGoldWeight}
+                onChange={(e) => updateNetGoldWeight(Number(e.target.value))}
+                onFocus={() => setWeightFocused(true)}
+                onBlur={() => { setWeightFocused(false); setWeightTouched(true); }}
+                placeholder="0.00"
+                className={cn(
+                  "w-full bg-transparent text-[2rem] font-light text-[hsl(var(--foreground))]",
+                  "placeholder:text-[hsl(var(--muted-foreground))]/30",
+                  "border-0 border-b-2 pb-2 focus:outline-none transition-colors tabular",
+                  weightFocused
+                    ? "border-[hsl(var(--foreground))]"
+                    : "border-[hsl(var(--border))]"
+                )}
+              />
+              <span className="text-sm text-[hsl(var(--muted-foreground))] shrink-0 pb-2">
+                g
+              </span>
+            </div>
+            <ValidationMessage message={weightError} />
+          </div>
+
+          <div>
+            <label className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/70 mb-3 block">
+              Purity
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              {calculatedGoldRates.map((g) => (
+                <PurityCard
+                  key={g.purity}
+                  label={g.label}
+                  rate={formatCurrency(g.rate)}
+                  selected={purity === g.purity}
+                  onClick={() => updatePurity(g.purity)}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Stones Section */}
+      <div className="py-6">
+        <SectionHeader
+          icon={Gem}
+          title="Stones"
+          isComplete={stonesValid}
+        />
+
+        <div className="space-y-5">
+          <AnimatePresence mode="popLayout" initial={false}>
+            {stones.map((stone, i) => (
+              <div key={stone.id}>
+                {i > 0 && <Separator className="mb-5" />}
+                <StoneRow
+                  stone={stone}
+                  index={i}
+                  stoneTypes={settings.stoneTypes}
+                  stoneSlabs={getStoneSlabs(stone.stoneTypeId)}
+                  canRemove={stones.length > 1}
+                  onTypeChange={(v) => handleStoneTypeChange(stone.id, v)}
+                  onSlabChange={(v) => updateStone(stone.id, "slabId", v)}
+                  onWeightChange={(v) => updateStone(stone.id, "weight", Number(v))}
+                  onQtyChange={(v) => updateStone(stone.id, "quantity", Math.max(1, Number(v)))}
+                  onRemove={() => removeStone(stone.id)}
+                  touched={stonesTouched[stone.id] || false}
+                  onTouch={() => setStonesTouched((prev) => ({ ...prev, [stone.id]: true }))}
+                />
+              </div>
+            ))}
+          </AnimatePresence>
+        </div>
+
+        <button
+          onClick={addStone}
+          className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors pt-4 mt-2"
+        >
+          <div className="w-5 h-5 rounded-full border border-[hsl(var(--border))] flex items-center justify-center hover:border-[hsl(var(--foreground))] transition-colors">
+            <Plus className="w-3 h-3" />
+          </div>
+          Add another stone
+        </button>
+      </div>
+
+      <Separator />
+
+      {/* Product Section */}
+      <div className="py-6">
+        <SectionHeader
+          icon={Package}
+          title="Product (Optional)"
+          isComplete={!!(productImageUrl || productName.trim())}
+        />
+
+        <ProductSection
+          productName={productName}
+          productImageUrl={productImageUrl}
+          productNote={productNote}
+          fileInputRef={fileInputRef}
+          onNameChange={updateProductName}
+          onNoteChange={updateProductNote}
+          onImageFile={handleImageFile}
+          onRemoveImage={removeImage}
+        />
+      </div>
+
+      {/* Calculate Button */}
+      <div className="py-6">
+        <Button
+          onClick={onCalculate}
+          disabled={!canCalculate}
+          className={cn(
+            "w-full h-12 text-sm font-medium transition-all",
+            canCalculate
+              ? "bg-[hsl(var(--foreground))] text-[hsl(var(--background))] hover:bg-[hsl(var(--foreground))]/90"
+              : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] cursor-not-allowed"
+          )}
+        >
+          Calculate
+        </Button>
+        {!canCalculate && (
+          <p className="text-xs text-[hsl(var(--muted-foreground))] text-center mt-2">
+            {!netGoldWeight ? "Enter net gold weight to continue" : "Enter stone details to continue"}
+          </p>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Results (Summary) View ───────────────────────────────────────────────────
 
 interface ResultsData {
   productName: string;
@@ -589,7 +915,7 @@ interface ResultsData {
   netGoldWeightForMaking: number;
 }
 
-function ResultsStep({
+function SummaryView({
   data,
   onBack,
   onReset,
@@ -620,8 +946,13 @@ function ResultsStep({
   };
 
   return (
-    <div>
-      {/* Step heading */}
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      {/* Header */}
       <div className="flex items-start justify-between mb-5">
         <div>
           <h2 className="text-[1.6rem] font-semibold leading-tight text-[hsl(var(--foreground))]">
@@ -644,9 +975,8 @@ function ResultsStep({
         </button>
       </div>
 
-      {/* ── The single summary card ── */}
+      {/* Summary Card */}
       <div ref={cardRef} className="rounded-xl border border-[hsl(var(--border))] overflow-hidden bg-[hsl(var(--card))]">
-
         {/* Branding header */}
         <div className="flex items-center justify-center gap-2 py-3 border-b border-[hsl(var(--border))]">
           <img src="/evol-logo.webp" alt="Evol" className="h-6 w-auto" />
@@ -747,9 +1077,9 @@ function ResultsStep({
                 Making Charges
               </span>
               <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 mt-0.5">
-                {data.netGoldWeightForMaking > 0 && data.netGoldWeightForMaking <= 2
-                  ? "Flat rate (≤ 2g)"
-                  : data.netGoldWeightForMaking > 2
+                {data.netGoldWeightForMaking > 0 && data.netGoldWeightForMaking < 2
+                  ? "Flat rate (< 2g)"
+                  : data.netGoldWeightForMaking >= 2
                   ? `${formatNumber(data.netGoldWeightForMaking)} g × ${formatCurrency(data.makingChargePerGram)}`
                   : ""}
               </p>
@@ -866,16 +1196,37 @@ function ResultsStep({
             {formatCurrency(data.total)}
           </motion.span>
         </div>
+
+        {/* Terms & Notes */}
+        <div className="px-4 py-2 bg-[hsl(var(--muted))]/20 border-t border-[hsl(var(--border))]">
+          <p className="text-[9px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/60 mb-1">
+            Terms & Conditions
+          </p>
+          <ul className="space-y-0.5">
+            <li className="text-[9px] text-[hsl(var(--muted-foreground))] leading-snug flex items-start gap-1.5">
+              <span className="text-[hsl(var(--muted-foreground))]/40 mt-0.5">•</span>
+              <span>Gold weight estimated might be slightly (5-10%) higher than actual weight of product, invoicing will be as per actuals</span>
+            </li>
+            <li className="text-[9px] text-[hsl(var(--muted-foreground))] leading-snug flex items-start gap-1.5">
+              <span className="text-[hsl(var(--muted-foreground))]/40 mt-0.5">•</span>
+              <span>Prices quoted as on today&apos;s date, subject to fluctuations depending on the date of confirmation</span>
+            </li>
+            <li className="text-[9px] text-[hsl(var(--muted-foreground))] leading-snug flex items-start gap-1.5">
+              <span className="text-[hsl(var(--muted-foreground))]/40 mt-0.5">•</span>
+              <span>For custom orders, a 50% advance payment is required to confirm the order and 75% to block the gold rate</span>
+            </li>
+          </ul>
+        </div>
       </div>
 
-      {/* Nav */}
+      {/* Navigation */}
       <div className="flex items-center justify-between pt-5">
         <button
           onClick={onBack}
           className="flex items-center gap-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
         >
           <ChevronLeft className="w-4 h-4" />
-          Back
+          Back to Edit
         </button>
         <button
           onClick={onReset}
@@ -885,7 +1236,7 @@ function ResultsStep({
           New Calculation
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -904,19 +1255,12 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
 
   const { netGoldWeight, purity, stones, productName, productNote } = formState;
 
-  const setNetGoldWeight = updateNetGoldWeight;
-  const setPurity = updatePurity;
-  const setStones = updateStones;
-  const setProductName = updateProductName;
-  const setProductNote = updateProductNote;
-
   // ── Product state (not persisted - image is objectURL) ──
   const [productImageUrl, setProductImageUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Stepper state ──
-  const [currentStep, setCurrentStep] = useState(0);
-  const [direction, setDirection] = useState<"forward" | "back">("forward");
+  // ── View state ──
+  const [view, setView] = useState<"form" | "summary">("form");
 
   // ── Gold rates ──
   const calculatedGoldRates = useMemo(() => {
@@ -974,20 +1318,13 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
   const total = subTotal + gst;
 
   // ── Navigation ──
-  const goNext = () => {
-    setDirection("forward");
-    setCurrentStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
-  };
-
-  const goPrev = () => {
-    setDirection("back");
-    setCurrentStep((s) => Math.max(s - 1, 0));
-  };
+  const goToSummary = () => setView("summary");
+  const goToForm = () => setView("form");
 
   const reset = () => {
-    setNetGoldWeight(0);
-    setPurity("22");
-    setStones([
+    updateNetGoldWeight(0);
+    updatePurity("22");
+    updateStones([
       {
         id: generateId(),
         stoneTypeId: settings.stoneTypes[0]?.stoneId ?? "",
@@ -996,264 +1333,73 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
         quantity: 1,
       },
     ]);
-    setProductName("");
-    setProductNote("");
+    updateProductName("");
+    updateProductNote("");
     if (productImageUrl) {
       URL.revokeObjectURL(productImageUrl);
       setProductImageUrl(null);
     }
-    setCurrentStep(0);
-    setDirection("forward");
-  };
-
-  // ── Stone CRUD ──
-  const updateStone = (id: string, field: keyof DiamondEntry, value: string | number) => {
-    setStones((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, [field]: value } : d))
-    );
-  };
-
-  const handleStoneTypeChange = (id: string, value: string) => {
-    const slabs = getStoneSlabs(value);
-    setStones((prev) =>
-      prev.map((d) =>
-        d.id === id ? { ...d, stoneTypeId: value, slabId: slabs[0]?.code ?? "" } : d
-      )
-    );
-  };
-
-  const addStone = () => {
-    setStones((prev) => [
-      ...prev,
-      {
-        id: generateId(),
-        stoneTypeId: settings.stoneTypes[0]?.stoneId ?? "",
-        slabId: settings.stoneTypes[0]?.slabs[0]?.code ?? "",
-        weight: 0,
-        quantity: 1,
-      },
-    ]);
-  };
-
-  const removeStone = (id: string) => {
-    setStones((prev) => prev.filter((d) => d.id !== id));
+    setView("form");
   };
 
   // ── Image handling ──
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleImageFile = useCallback((file: File) => {
+    if (!file.type.startsWith("image/")) return;
     if (productImageUrl) URL.revokeObjectURL(productImageUrl);
     setProductImageUrl(URL.createObjectURL(file));
-    // reset input so same file can be re-selected
-    e.target.value = "";
-  };
+  }, [productImageUrl]);
 
   const removeImage = () => {
     if (productImageUrl) URL.revokeObjectURL(productImageUrl);
     setProductImageUrl(null);
   };
 
-  // ── Validation ──
-  const step1Valid = netGoldWeight >= 0;
-  const stonesValid =
-    stones.length > 0 &&
-    stones.some((s) => s.weight > 0) &&
-    stones.every((s) => s.weight === 0 || (s.weight > 0 && !!s.slabId));
-  // Step 3 (product details) is always optional — always valid
-
-  // ── Slide variants ──
-  const slideVariants = {
-    enter: (dir: "forward" | "back") => ({
-      x: dir === "forward" ? 40 : -40,
-      opacity: 0,
-    }),
-    center: { x: 0, opacity: 1 },
-    exit: (dir: "forward" | "back") => ({
-      x: dir === "forward" ? -40 : 40,
-      opacity: 0,
-    }),
-  };
-
-  const stepLabels = ["Gold Details", "Stones", "Product Details", "Summary"];
-
-  // ── Step renderers ──
-
-  const renderGoldStep = () => (
-    <div className="space-y-8">
-      <div>
-        <h2 className="text-[1.6rem] font-semibold leading-tight text-[hsl(var(--foreground))]">
-          Gold details
-        </h2>
-        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1.5">
-          Enter the net weight and select the purity
-        </p>
-      </div>
-
-      <BigInput
-        type="number"
-        step="0.001"
-        min="0.001"
-        value={netGoldWeight}
-        onChange={(v) => setNetGoldWeight(Number(v))}
-        placeholder="0.00"
-        suffix="g"
-        autoFocus
-      />
-
-      <div>
-        <p className="text-[11px] font-semibold tracking-widest uppercase text-[hsl(var(--muted-foreground))] mb-3">
-          Purity
-        </p>
-        <div className="grid grid-cols-4 gap-2">
-          {calculatedGoldRates.map((g) => (
-            <PurityCard
-              key={g.purity}
-              label={g.label}
-              rate={formatCurrency(g.rate)}
-              selected={purity === g.purity}
-              onClick={() => setPurity(g.purity)}
-            />
-          ))}
-        </div>
-      </div>
-
-      <NavRow
-        onNext={step1Valid ? goNext : undefined}
-        nextDisabled={!step1Valid}
-        hint={!step1Valid ? "Enter a weight to continue" : undefined}
-      />
-    </div>
-  );
-
-  const renderStonesStep = () => (
-    <div className="space-y-5">
-      <div>
-        <h2 className="text-[1.6rem] font-semibold leading-tight text-[hsl(var(--foreground))]">
-          Stone specifications
-        </h2>
-        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1.5">
-          Add each stone with its type, slab, and weight
-        </p>
-      </div>
-
-      <div className="space-y-5">
-        <AnimatePresence mode="popLayout" initial={false}>
-          {stones.map((stone, i) => (
-            <div key={stone.id}>
-              {i > 0 && <Separator className="mb-5" />}
-              <StoneRow
-                stone={stone}
-                index={i}
-                stoneTypes={settings.stoneTypes}
-                stoneSlabs={getStoneSlabs(stone.stoneTypeId)}
-                canRemove={stones.length > 1}
-                onTypeChange={(v) => handleStoneTypeChange(stone.id, v)}
-                onSlabChange={(v) => updateStone(stone.id, "slabId", v)}
-                onWeightChange={(v) => updateStone(stone.id, "weight", Number(v))}
-                onQtyChange={(v) => updateStone(stone.id, "quantity", Math.max(1, Number(v)))}
-                onRemove={() => removeStone(stone.id)}
-              />
-            </div>
-          ))}
-        </AnimatePresence>
-      </div>
-
-      <button
-        onClick={addStone}
-        className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors pt-1"
-      >
-        <div className="w-5 h-5 rounded-full border border-[hsl(var(--border))] flex items-center justify-center hover:border-[hsl(var(--foreground))] transition-colors">
-          <Plus className="w-3 h-3" />
-        </div>
-        Add another stone
-      </button>
-
-      <NavRow
-        onPrev={goPrev}
-        onNext={stonesValid ? goNext : undefined}
-        nextDisabled={!stonesValid}
-        hint={!stonesValid ? "Enter weight for at least one stone" : undefined}
-      />
-    </div>
-  );
-
-  const renderProductStep = () => (
-    <ProductStep
-      productName={productName}
-      productImageUrl={productImageUrl}
-      productNote={productNote}
-      fileInputRef={fileInputRef}
-      onNameChange={setProductName}
-      onNoteChange={setProductNote}
-      onImageSelect={handleImageSelect}
-      onRemoveImage={removeImage}
-      onPrev={goPrev}
-      onNext={goNext}
-    />
-  );
-
-  const renderResultsStep = () => (
-    <ResultsStep
-      data={{
-        productName,
-        productImageUrl,
-        productNote,
-        netGoldWeight,
-        purity,
-        goldRateValue,
-        goldCost,
-        makingCost,
-        stoneDetails,
-        totalStoneCost,
-        subTotal,
-        gst,
-        total,
-        gstRate: settings.gstRate,
-        grossWeight,
-        makingChargePerGram: settings.makingChargePerGram,
-        netGoldWeightForMaking: netGoldWeight,
-      }}
-      onBack={goPrev}
-      onReset={reset}
-    />
-  );
-
-  const renderStep = () => {
-    switch (currentStep) {
-      case 0: return renderGoldStep();
-      case 1: return renderStonesStep();
-      case 2: return renderProductStep();
-      case 3: return renderResultsStep();
-      default: return null;
-    }
-  };
-
   return (
     <div className="relative w-full max-w-lg mx-auto">
-      <ProgressBar current={currentStep} total={TOTAL_STEPS} />
-
-      <div className="flex items-center justify-between mb-5 pt-4">
-        <StepPill
-          current={currentStep + 1}
-          total={TOTAL_STEPS}
-          label={stepLabels[currentStep]}
-        />
-      </div>
-
       <div className="bg-[hsl(var(--card))] rounded-2xl step-card p-7 overflow-hidden">
-        <AnimatePresence mode="wait" custom={direction}>
-          <motion.div
-            key={currentStep}
-            custom={direction}
-            variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-          >
-            {renderStep()}
-          </motion.div>
+        <AnimatePresence mode="wait">
+          {view === "form" ? (
+            <FormView
+              key="form"
+              settings={settings}
+              formState={formState}
+              productImageUrl={productImageUrl}
+              fileInputRef={fileInputRef}
+              updateNetGoldWeight={updateNetGoldWeight}
+              updatePurity={updatePurity}
+              updateStones={updateStones}
+              updateProductName={updateProductName}
+              updateProductNote={updateProductNote}
+              handleImageFile={handleImageFile}
+              removeImage={removeImage}
+              onCalculate={goToSummary}
+            />
+          ) : (
+            <SummaryView
+              key="summary"
+              data={{
+                productName,
+                productImageUrl,
+                productNote,
+                netGoldWeight,
+                purity,
+                goldRateValue,
+                goldCost,
+                makingCost,
+                stoneDetails,
+                totalStoneCost,
+                subTotal,
+                gst,
+                total,
+                gstRate: settings.gstRate,
+                grossWeight,
+                makingChargePerGram: settings.makingChargePerGram,
+                netGoldWeightForMaking: netGoldWeight,
+              }}
+              onBack={goToForm}
+              onReset={reset}
+            />
+          )}
         </AnimatePresence>
       </div>
     </div>

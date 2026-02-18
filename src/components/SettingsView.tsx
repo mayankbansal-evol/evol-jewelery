@@ -178,6 +178,7 @@ export default function SettingsView({ settings, onChange }: SettingsViewProps) 
                     <span className="text-sm text-[hsl(var(--muted-foreground))]">₹</span>
                     <Input
                       type="number"
+                      step="0.001"
                       value={settings.goldRate24k}
                       onChange={(e) => updateGoldRate24k(Number(e.target.value))}
                       className="w-32 h-9 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
@@ -256,6 +257,7 @@ export default function SettingsView({ settings, onChange }: SettingsViewProps) 
                     <span className="text-sm text-[hsl(var(--muted-foreground))]">₹</span>
                     <Input
                       type="number"
+                      step="0.001"
                       value={settings.makingChargeFlat}
                       onChange={(e) => updateMakingFlat(Number(e.target.value))}
                       className="w-32 h-9 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
@@ -272,6 +274,7 @@ export default function SettingsView({ settings, onChange }: SettingsViewProps) 
                     <span className="text-sm text-[hsl(var(--muted-foreground))]">₹</span>
                     <Input
                       type="number"
+                      step="0.001"
                       value={settings.makingChargePerGram}
                       onChange={(e) => updateMakingPerGram(Number(e.target.value))}
                       className="w-32 h-9 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
@@ -507,6 +510,7 @@ export default function SettingsView({ settings, onChange }: SettingsViewProps) 
                                 <label className="text-[10px] text-[hsl(var(--muted-foreground))] block">₹/Carat</label>
                                 <Input
                                   type="number"
+                                  step="0.001"
                                   value={sl.pricePerCarat}
                                   onChange={(e) => updateSlab(editingStone.stoneId, i, { pricePerCarat: Number(e.target.value) })}
                                   className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
