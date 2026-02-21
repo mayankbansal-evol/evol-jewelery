@@ -34,7 +34,6 @@ export interface FixedSettings {
 export interface DiamondEntry {
   id: string;
   stoneTypeId: string;
-  slabId: string;
   weight: number;
   quantity: number;
 }

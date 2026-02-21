@@ -40,7 +40,6 @@ function getDefaultStones(): DiamondEntry[] {
     {
       id: generateId(),
       stoneTypeId: "",
-      slabId: "",
       weight: 0,
       quantity: 1,
     },
@@ -48,15 +47,13 @@ function getDefaultStones(): DiamondEntry[] {
 }
 
 export function useCalculatorState(defaults: {
-  stoneTypes: { stoneId: string; slabs: { code: string }[] }[];
+  stoneTypes: { stoneId: string }[];
 }) {
   const getInitialStone = useCallback((): DiamondEntry => {
     const firstStoneType = defaults.stoneTypes[0];
-    const firstSlab = firstStoneType?.slabs[0];
     return {
       id: generateId(),
       stoneTypeId: firstStoneType?.stoneId ?? "",
-      slabId: firstSlab?.code ?? "",
       weight: 0,
       quantity: 1,
     };

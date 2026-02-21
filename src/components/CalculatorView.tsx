@@ -3,6 +3,7 @@ import { toPng } from "html-to-image";
 import { motion, AnimatePresence } from "motion/react";
 import { FixedSettings, DiamondEntry, Slab } from "@/lib/types";
 import { useCalculatorState } from "@/hooks/useCalculatorState";
+import { useNumericInput } from "@/hooks/useNumericInput";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -11,6 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import {
   ChevronLeft,
@@ -27,6 +34,7 @@ import {
   Gem,
   Package,
   AlertCircle,
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -49,7 +57,7 @@ function generateId() {
 function calculateMakingCharge(
   netGoldWeight: number,
   flatRate: number,
-  perGramRate: number
+  perGramRate: number,
 ): number {
   if (netGoldWeight <= 0) return 0;
   if (netGoldWeight < 2) return flatRate;
@@ -136,7 +144,7 @@ function ProgressIndicator({
               "w-2 h-2 rounded-full transition-colors duration-300",
               section.isComplete
                 ? "bg-[hsl(var(--foreground))]"
-                : "border border-[hsl(var(--border))]"
+                : "border border-[hsl(var(--border))]",
             )}
             initial={false}
             animate={{
@@ -197,7 +205,7 @@ function BigInput({
           focused
             ? "border-[hsl(var(--foreground))]"
             : "border-[hsl(var(--border))]",
-          className
+          className,
         )}
       />
       {suffix && (
@@ -227,7 +235,7 @@ function PurityCard({
         "relative flex flex-col items-start p-4 rounded-xl border-2 text-left transition-all duration-150 focus:outline-none",
         selected
           ? "border-[hsl(var(--foreground))] bg-[hsl(var(--foreground))] text-[hsl(var(--background))]"
-          : "border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--foreground))] hover:border-[hsl(var(--foreground))]/30"
+          : "border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--foreground))] hover:border-[hsl(var(--foreground))]/30",
       )}
     >
       <span className="text-xl font-semibold">{label}</span>
@@ -236,7 +244,7 @@ function PurityCard({
           "text-xs mt-1 tabular",
           selected
             ? "text-[hsl(var(--background))]/70"
-            : "text-[hsl(var(--muted-foreground))]"
+            : "text-[hsl(var(--muted-foreground))]",
         )}
       >
         {rate}/g
@@ -245,6 +253,23 @@ function PurityCard({
         <CheckCircle2 className="absolute top-3 right-3 w-4 h-4 opacity-80" />
       )}
     </button>
+  );
+}
+
+// ─── Auto slab lookup ────────────────────────────────────────────────────────
+
+function resolveAutoSlab(
+  slabs: Slab[],
+  weight: number,
+  quantity: number,
+): Slab | null {
+  if (weight <= 0 || slabs.length === 0) return null;
+  const pieces = Math.max(1, quantity);
+  const perPieceWeight = weight / pieces;
+  return (
+    slabs.find(
+      (sl) => perPieceWeight >= sl.fromWeight && perPieceWeight < sl.toWeight,
+    ) ?? null
   );
 }
 
@@ -257,12 +282,9 @@ function StoneRow({
   stoneSlabs,
   canRemove,
   onTypeChange,
-  onSlabChange,
   onWeightChange,
   onQtyChange,
   onRemove,
-  touched,
-  onTouch,
 }: {
   stone: DiamondEntry;
   index: number;
@@ -270,22 +292,31 @@ function StoneRow({
   stoneSlabs: Slab[];
   canRemove: boolean;
   onTypeChange: (v: string) => void;
-  onSlabChange: (v: string) => void;
   onWeightChange: (v: string) => void;
   onQtyChange: (v: string) => void;
   onRemove: () => void;
-  touched: boolean;
-  onTouch: () => void;
 }) {
-  const [weightFocused, setWeightFocused] = useState(false);
-  const [qtyFocused, setQtyFocused] = useState(false);
+  const weightInput = useNumericInput(
+    stone.weight,
+    (n) => onWeightChange(String(n)),
+    {
+      allowDecimal: true,
+      min: 0,
+    },
+  );
 
-  const stoneError = touched && stone.weight > 0 && !stone.slabId
-    ? "Select a slab for this stone"
-    : null;
-  const weightError = touched && stone.slabId && stone.weight <= 0
-    ? "Enter stone weight"
-    : null;
+  const qtyInput = useNumericInput(
+    stone.quantity,
+    (n) => onQtyChange(String(Math.max(1, n))),
+    {
+      allowDecimal: false,
+      min: 1,
+    },
+  );
+
+  const autoSlab = resolveAutoSlab(stoneSlabs, stone.weight, stone.quantity);
+  const hasWeight = stone.weight > 0;
+  const noSlabMatch = hasWeight && !autoSlab && stoneSlabs.length > 0;
 
   return (
     <motion.div
@@ -300,6 +331,75 @@ function StoneRow({
         <span className="text-[10px] font-semibold tracking-widest uppercase text-[hsl(var(--muted-foreground))]/60">
           Stone {index + 1}
         </span>
+
+        {/* Auto-resolved slab info tooltip */}
+        {hasWeight && (
+          <TooltipProvider delayDuration={100}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex items-center gap-1 text-[10px] font-medium transition-colors focus:outline-none",
+                    autoSlab
+                      ? "text-[hsl(var(--foreground))]/50 hover:text-[hsl(var(--foreground))]"
+                      : "text-[hsl(var(--destructive))]/70 hover:text-[hsl(var(--destructive))]",
+                  )}
+                >
+                  <Info className="w-3 h-3" />
+                  {autoSlab ? (
+                    <span className="tabular">
+                      {formatNumber(autoSlab.fromWeight, 3)}–
+                      {formatNumber(autoSlab.toWeight, 3)} ct
+                    </span>
+                  ) : (
+                    <span>No slab matched</span>
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs max-w-[220px]">
+                {autoSlab ? (
+                  <div className="space-y-0.5">
+                    <p className="font-semibold">Slab Applied</p>
+                    <p className="font-mono text-[11px] text-[hsl(var(--muted-foreground))]">
+                      {autoSlab.code}
+                    </p>
+                    <p>
+                      {formatNumber(autoSlab.fromWeight, 3)}–
+                      {formatNumber(autoSlab.toWeight, 3)} ct per piece
+                    </p>
+                    <p className="font-medium">
+                      {formatCurrency(autoSlab.pricePerCarat)}/ct
+                    </p>
+                    <p className="text-[hsl(var(--muted-foreground))] text-[10px] pt-0.5">
+                      Per-piece weight:{" "}
+                      {formatNumber(
+                        stone.weight / Math.max(1, stone.quantity),
+                        4,
+                      )}{" "}
+                      ct
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-0.5">
+                    <p className="font-semibold text-[hsl(var(--destructive))]">
+                      No slab matched
+                    </p>
+                    <p className="text-[hsl(var(--muted-foreground))]">
+                      Per-piece weight{" "}
+                      {formatNumber(
+                        stone.weight / Math.max(1, stone.quantity),
+                        4,
+                      )}{" "}
+                      ct falls outside all defined slabs.
+                    </p>
+                  </div>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
         {canRemove && (
           <button
             onClick={onRemove}
@@ -311,7 +411,7 @@ function StoneRow({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 mb-3">
+      <div className="mb-3">
         <div className="space-y-1">
           <label className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/70">
             Type
@@ -336,87 +436,59 @@ function StoneRow({
             </SelectContent>
           </Select>
         </div>
-
-        <div className="space-y-1">
-          <label className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/70">
-            Slab
-          </label>
-          <Select
-            value={stone.slabId}
-            onValueChange={(v) => { onSlabChange(v); onTouch(); }}
-            disabled={!stone.stoneTypeId || stoneSlabs.length === 0}
-          >
-            <SelectTrigger className="h-9 text-sm border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))] transition-colors disabled:opacity-40">
-              <SelectValue placeholder="Select slab" />
-            </SelectTrigger>
-            <SelectContent className="max-h-60">
-              {stoneSlabs.map((sl) => (
-                <SelectItem key={sl.code} value={sl.code}>
-                  <div className="flex items-center gap-3">
-                    <span className="tabular text-xs">
-                      {formatNumber(sl.fromWeight, 3)}–{formatNumber(sl.toWeight, 3)} ct
-                    </span>
-                    <span className="text-xs text-[hsl(var(--muted-foreground))]">
-                      {formatCurrency(sl.pricePerCarat)}/ct
-                    </span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <ValidationMessage message={stoneError} />
-        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <label className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/70">
-            Net Weight
+            Stone Net Weight
           </label>
           <div className="flex items-baseline gap-1.5">
             <input
-              type="number"
-              step="0.001"
-              min="0.001"
-              value={stone.weight}
-              onChange={(e) => { onWeightChange(e.target.value); onTouch(); }}
-              onFocus={() => setWeightFocused(true)}
-              onBlur={() => setWeightFocused(false)}
+              type="text"
+              inputMode="decimal"
+              value={weightInput.display}
+              onChange={weightInput.handleChange}
+              onFocus={weightInput.handleFocus}
+              onBlur={weightInput.handleBlur}
               placeholder="0.000"
               className={cn(
                 "w-full bg-transparent text-base font-medium text-[hsl(var(--foreground))]",
                 "placeholder:text-[hsl(var(--muted-foreground))]/30",
                 "border-0 border-b pb-1 focus:outline-none transition-colors tabular",
-                weightFocused
+                weightInput.isFocused
                   ? "border-[hsl(var(--foreground))]"
-                  : "border-[hsl(var(--border))]"
+                  : "border-[hsl(var(--border))]",
               )}
             />
             <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0 pb-1">
               ct
             </span>
           </div>
-          <ValidationMessage message={weightError} />
+          {noSlabMatch && (
+            <ValidationMessage message="Weight outside slab range" />
+          )}
         </div>
 
         <div className="space-y-1">
           <label className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/70">
-            Pieces
+            Total Pieces
           </label>
           <input
-            type="number"
-            step="1"
-            min="1"
-            value={stone.quantity}
-            onChange={(e) => onQtyChange(e.target.value)}
-            onFocus={() => setQtyFocused(true)}
-            onBlur={() => setQtyFocused(false)}
+            type="text"
+            inputMode="numeric"
+            value={qtyInput.display}
+            onChange={qtyInput.handleChange}
+            onFocus={qtyInput.handleFocus}
+            onBlur={qtyInput.handleBlur}
+            placeholder="1"
             className={cn(
               "w-full bg-transparent text-base font-medium text-[hsl(var(--foreground))]",
+              "placeholder:text-[hsl(var(--muted-foreground))]/30",
               "border-0 border-b pb-1 focus:outline-none transition-colors tabular",
-              qtyFocused
+              qtyInput.isFocused
                 ? "border-[hsl(var(--foreground))]"
-                : "border-[hsl(var(--border))]"
+                : "border-[hsl(var(--border))]",
             )}
           />
         </div>
@@ -480,13 +552,16 @@ function ProductSection({
     setIsDragOver(false);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) onImageFile(file);
-  }, [onImageFile]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragOver(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file) onImageFile(file);
+    },
+    [onImageFile],
+  );
 
   return (
     <div className="space-y-4">
@@ -508,7 +583,10 @@ function ProductSection({
               />
               <div className="absolute inset-0 bg-[hsl(var(--foreground))]/0 group-hover:bg-[hsl(var(--foreground))]/20 transition-colors" />
               <button
-                onClick={(e) => { e.stopPropagation(); onRemoveImage(); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemoveImage();
+                }}
                 className="absolute top-1 right-1 w-5 h-5 rounded-full bg-[hsl(var(--foreground))]/70 text-[hsl(var(--background))] flex items-center justify-center hover:bg-[hsl(var(--foreground))] transition-colors"
               >
                 <X className="w-3 h-3" />
@@ -529,14 +607,18 @@ function ProductSection({
             onClick={() => fileInputRef.current?.click()}
             animate={{
               scale: isDragOver ? 1.02 : 1,
-              borderColor: isDragOver ? "hsl(var(--foreground))" : "hsl(var(--border))",
-              backgroundColor: isDragOver ? "hsl(var(--foreground) / 0.05)" : "transparent",
+              borderColor: isDragOver
+                ? "hsl(var(--foreground))"
+                : "hsl(var(--border))",
+              backgroundColor: isDragOver
+                ? "hsl(var(--foreground) / 0.05)"
+                : "transparent",
             }}
             transition={{ duration: 0.15, ease: "easeOut" }}
             className={cn(
               "w-full h-20 rounded-xl border-2 border-dashed cursor-pointer",
               "flex flex-col items-center justify-center gap-1.5 focus:outline-none",
-              "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+              "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]",
             )}
           >
             <motion.div
@@ -584,7 +666,7 @@ function ProductSection({
             "border-0 border-b-2 pb-2 focus:outline-none transition-colors",
             nameFocused
               ? "border-[hsl(var(--foreground))]"
-              : "border-[hsl(var(--border))]"
+              : "border-[hsl(var(--border))]",
           )}
         />
       </div>
@@ -607,7 +689,7 @@ function ProductSection({
             "border-0 border-b-2 pb-2 focus:outline-none transition-colors leading-relaxed",
             noteFocused
               ? "border-[hsl(var(--foreground))]"
-              : "border-[hsl(var(--border))]"
+              : "border-[hsl(var(--border))]",
           )}
         />
       </div>
@@ -653,9 +735,12 @@ function FormView({
   onCalculate,
 }: FormViewProps) {
   const { netGoldWeight, purity, stones, productName, productNote } = formState;
-  const [weightFocused, setWeightFocused] = useState(false);
   const [weightTouched, setWeightTouched] = useState(false);
-  const [stonesTouched, setStonesTouched] = useState<Record<string, boolean>>({});
+
+  const goldWeightInput = useNumericInput(netGoldWeight, updateNetGoldWeight, {
+    allowDecimal: true,
+    min: 0,
+  });
 
   const calculatedGoldRates = useMemo(() => {
     return GOLD_PURITIES.map((purityVal) => {
@@ -668,21 +753,22 @@ function FormView({
   const getStoneSlabs = useCallback(
     (stoneTypeId: string): Slab[] =>
       settings.stoneTypes.find((s) => s.stoneId === stoneTypeId)?.slabs ?? [],
-    [settings.stoneTypes]
+    [settings.stoneTypes],
   );
 
-  const updateStone = (id: string, field: keyof DiamondEntry, value: string | number) => {
+  const updateStone = (
+    id: string,
+    field: keyof DiamondEntry,
+    value: string | number,
+  ) => {
     updateStones((prev) =>
-      prev.map((d) => (d.id === id ? { ...d, [field]: value } : d))
+      prev.map((d) => (d.id === id ? { ...d, [field]: value } : d)),
     );
   };
 
   const handleStoneTypeChange = (id: string, value: string) => {
-    const slabs = getStoneSlabs(value);
     updateStones((prev) =>
-      prev.map((d) =>
-        d.id === id ? { ...d, stoneTypeId: value, slabId: slabs[0]?.code ?? "" } : d
-      )
+      prev.map((d) => (d.id === id ? { ...d, stoneTypeId: value } : d)),
     );
   };
 
@@ -692,7 +778,6 @@ function FormView({
       {
         id: generateId(),
         stoneTypeId: settings.stoneTypes[0]?.stoneId ?? "",
-        slabId: settings.stoneTypes[0]?.slabs[0]?.code ?? "",
         weight: 0,
         quantity: 1,
       },
@@ -701,17 +786,21 @@ function FormView({
 
   const removeStone = (id: string) => {
     updateStones((prev) => prev.filter((d) => d.id !== id));
-    setStonesTouched((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
   };
 
+  // A stone row is valid when it has a weight and the auto-slab resolves successfully
   const stonesValid =
     stones.length > 0 &&
     stones.some((s) => s.weight > 0) &&
-    stones.every((s) => s.weight === 0 || (s.weight > 0 && !!s.slabId));
+    stones.every((s) => {
+      if (s.weight === 0) return true; // empty rows are ignored
+      const slab = resolveAutoSlab(
+        getStoneSlabs(s.stoneTypeId),
+        s.weight,
+        s.quantity,
+      );
+      return slab !== null;
+    });
 
   const progressSections = [
     { label: "Gold", isComplete: netGoldWeight > 0 },
@@ -720,7 +809,8 @@ function FormView({
   ];
 
   const canCalculate = netGoldWeight > 0 && stonesValid;
-  const weightError = weightTouched && netGoldWeight <= 0 ? "Enter net gold weight" : null;
+  const weightError =
+    weightTouched && netGoldWeight <= 0 ? "Enter net gold weight" : null;
 
   return (
     <motion.div
@@ -743,25 +833,29 @@ function FormView({
         <div className="space-y-6">
           <div>
             <label className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/70 mb-1.5 block">
-              Net Weight
+              Gold Net Weight
             </label>
             <div className="flex items-baseline gap-2">
               <input
-                type="number"
-                step="0.001"
-                min="0.001"
-                value={netGoldWeight}
-                onChange={(e) => updateNetGoldWeight(Number(e.target.value))}
-                onFocus={() => setWeightFocused(true)}
-                onBlur={() => { setWeightFocused(false); setWeightTouched(true); }}
-                placeholder="0.00"
+                type="text"
+                inputMode="decimal"
+                value={goldWeightInput.display}
+                onChange={goldWeightInput.handleChange}
+                onFocus={(e) => {
+                  goldWeightInput.handleFocus(e);
+                }}
+                onBlur={() => {
+                  goldWeightInput.handleBlur();
+                  setWeightTouched(true);
+                }}
+                placeholder="0.000"
                 className={cn(
                   "w-full bg-transparent text-[2rem] font-light text-[hsl(var(--foreground))]",
                   "placeholder:text-[hsl(var(--muted-foreground))]/30",
                   "border-0 border-b-2 pb-2 focus:outline-none transition-colors tabular",
-                  weightFocused
+                  goldWeightInput.isFocused
                     ? "border-[hsl(var(--foreground))]"
-                    : "border-[hsl(var(--border))]"
+                    : "border-[hsl(var(--border))]",
                 )}
               />
               <span className="text-sm text-[hsl(var(--muted-foreground))] shrink-0 pb-2">
@@ -794,11 +888,7 @@ function FormView({
 
       {/* Stones Section */}
       <div className="py-6">
-        <SectionHeader
-          icon={Gem}
-          title="Stones"
-          isComplete={stonesValid}
-        />
+        <SectionHeader icon={Gem} title="Stones" isComplete={stonesValid} />
 
         <div className="space-y-5">
           <AnimatePresence mode="popLayout" initial={false}>
@@ -812,12 +902,13 @@ function FormView({
                   stoneSlabs={getStoneSlabs(stone.stoneTypeId)}
                   canRemove={stones.length > 1}
                   onTypeChange={(v) => handleStoneTypeChange(stone.id, v)}
-                  onSlabChange={(v) => updateStone(stone.id, "slabId", v)}
-                  onWeightChange={(v) => updateStone(stone.id, "weight", Number(v))}
-                  onQtyChange={(v) => updateStone(stone.id, "quantity", Math.max(1, Number(v)))}
+                  onWeightChange={(v) =>
+                    updateStone(stone.id, "weight", Number(v))
+                  }
+                  onQtyChange={(v) =>
+                    updateStone(stone.id, "quantity", Math.max(1, Number(v)))
+                  }
                   onRemove={() => removeStone(stone.id)}
-                  touched={stonesTouched[stone.id] || false}
-                  onTouch={() => setStonesTouched((prev) => ({ ...prev, [stone.id]: true }))}
                 />
               </div>
             ))}
@@ -858,7 +949,29 @@ function FormView({
       </div>
 
       {/* Calculate Button */}
-      <div className="py-6">
+      <div className="py-6 space-y-3">
+        <AnimatePresence>
+          {!canCalculate &&
+            (netGoldWeight > 0 || stones.some((s) => s.weight > 0)) && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, y: -6, height: 0 }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="flex items-start gap-2.5 rounded-lg border border-[hsl(var(--destructive))]/30 bg-[hsl(var(--destructive))]/8 px-3.5 py-3">
+                  <AlertCircle className="w-4 h-4 text-[hsl(var(--destructive))] shrink-0 mt-0.5" />
+                  <p className="text-sm text-[hsl(var(--destructive))] leading-snug">
+                    {!netGoldWeight
+                      ? "Enter gold net weight to continue"
+                      : "Enter stone weight and pieces — slab will be matched automatically"}
+                  </p>
+                </div>
+              </motion.div>
+            )}
+        </AnimatePresence>
+
         <Button
           onClick={onCalculate}
           disabled={!canCalculate}
@@ -866,16 +979,19 @@ function FormView({
             "w-full h-12 text-sm font-medium transition-all",
             canCalculate
               ? "bg-[hsl(var(--foreground))] text-[hsl(var(--background))] hover:bg-[hsl(var(--foreground))]/90"
-              : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] cursor-not-allowed"
+              : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] cursor-not-allowed",
           )}
         >
           Calculate
         </Button>
-        {!canCalculate && (
-          <p className="text-xs text-[hsl(var(--muted-foreground))] text-center mt-2">
-            {!netGoldWeight ? "Enter net gold weight to continue" : "Enter stone details to continue"}
-          </p>
-        )}
+
+        {!canCalculate &&
+          !netGoldWeight &&
+          !stones.some((s) => s.weight > 0) && (
+            <p className="text-xs text-[hsl(var(--muted-foreground))] text-center">
+              Enter gold weight and stone details to continue
+            </p>
+          )}
       </div>
     </motion.div>
   );
@@ -933,7 +1049,8 @@ function SummaryView({
     if (!cardRef.current) return;
     setIsDownloading(true);
     try {
-      const slug = data.productName.trim().replace(/\s+/g, "-").toLowerCase() || "summary";
+      const slug =
+        data.productName.trim().replace(/\s+/g, "-").toLowerCase() || "summary";
       const date = new Date().toISOString().slice(0, 10);
       const dataUrl = await toPng(cardRef.current, { pixelRatio: 2 });
       const a = document.createElement("a");
@@ -968,19 +1085,22 @@ function SummaryView({
           title="Download summary"
           className="w-8 h-8 rounded-lg border border-[hsl(var(--border))] flex items-center justify-center text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--foreground))] transition-all disabled:opacity-40 shrink-0 mt-1"
         >
-          {isDownloading
-            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            : <Download className="w-3.5 h-3.5" />
-          }
+          {isDownloading ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Download className="w-3.5 h-3.5" />
+          )}
         </button>
       </div>
 
       {/* Summary Card */}
-      <div ref={cardRef} className="rounded-xl border border-[hsl(var(--border))] overflow-hidden bg-[hsl(var(--card))]">
+      <div
+        ref={cardRef}
+        className="rounded-xl border border-[hsl(var(--border))] overflow-hidden bg-[hsl(var(--card))]"
+      >
         {/* Branding header */}
         <div className="flex items-center justify-center gap-2 py-3 border-b border-[hsl(var(--border))]">
           <img src="/evol-logo.webp" alt="Evol" className="h-6 w-auto" />
-          <span className="text-sm font-semibold text-[hsl(var(--foreground))]">Evol Jewels</span>
         </div>
 
         {/* Product header */}
@@ -1006,7 +1126,7 @@ function SummaryView({
                   "text-base font-semibold leading-snug",
                   !data.productName.trim()
                     ? "text-[hsl(var(--muted-foreground))]"
-                    : "text-[hsl(var(--foreground))]"
+                    : "text-[hsl(var(--foreground))]",
                 )}
               >
                 {displayName}
@@ -1053,20 +1173,34 @@ function SummaryView({
           {/* Gold stats row */}
           <div className="grid grid-cols-4 gap-2 text-sm">
             <div>
-              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">Net Wt</p>
-              <p className="font-medium tabular">{formatNumber(data.netGoldWeight)} g</p>
+              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">
+                Net Wt
+              </p>
+              <p className="font-medium tabular">
+                {formatNumber(data.netGoldWeight)} g
+              </p>
             </div>
             <div>
-              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">Purity</p>
+              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">
+                Purity
+              </p>
               <p className="font-medium">{data.purity}K</p>
             </div>
             <div>
-              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">Rate</p>
-              <p className="font-medium tabular">{formatCurrency(data.goldRateValue)}</p>
+              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">
+                Rate
+              </p>
+              <p className="font-medium tabular">
+                {formatCurrency(data.goldRateValue)}
+              </p>
             </div>
             <div className="text-right">
-              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">Cost</p>
-              <p className="font-semibold tabular">{formatCurrency(data.goldCost)}</p>
+              <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">
+                Cost
+              </p>
+              <p className="font-semibold tabular">
+                {formatCurrency(data.goldCost)}
+              </p>
             </div>
           </div>
 
@@ -1076,13 +1210,6 @@ function SummaryView({
               <span className="text-sm text-[hsl(var(--muted-foreground))]">
                 Making Charges
               </span>
-              <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 mt-0.5">
-                {data.netGoldWeightForMaking > 0 && data.netGoldWeightForMaking < 2
-                  ? "Flat rate (< 2g)"
-                  : data.netGoldWeightForMaking >= 2
-                  ? `${formatNumber(data.netGoldWeightForMaking)} g × ${formatCurrency(data.makingChargePerGram)}`
-                  : ""}
-              </p>
             </div>
             <span className="text-sm font-semibold tabular">
               {formatCurrency(data.makingCost)}
@@ -1107,7 +1234,8 @@ function SummaryView({
                     key={d.id}
                     className={cn(
                       "py-2.5",
-                      i < arr.length - 1 && "border-b border-[hsl(var(--border))]/40"
+                      i < arr.length - 1 &&
+                        "border-b border-[hsl(var(--border))]/40",
                     )}
                   >
                     {/* Stone name + cost */}
@@ -1125,26 +1253,12 @@ function SummaryView({
                       <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
                         {formatNumber(d.weight, 3)} ct
                       </span>
-                      <span className="text-[10px] text-[hsl(var(--muted-foreground))]/40">·</span>
+                      <span className="text-[10px] text-[hsl(var(--muted-foreground))]/40">
+                        ·
+                      </span>
                       <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
                         {d.quantity} pcs
                       </span>
-                      {d.slabInfo && (
-                        <>
-                          <span className="text-[10px] text-[hsl(var(--muted-foreground))]/40">·</span>
-                          <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))]">
-                            {d.slabInfo.code}
-                          </span>
-                          <span className="text-[10px] text-[hsl(var(--muted-foreground))]/40">·</span>
-                          <span className="text-[10px] tabular text-[hsl(var(--muted-foreground))]">
-                            {formatNumber(d.slabInfo.fromWeight, 3)}–{formatNumber(d.slabInfo.toWeight, 3)} ct
-                          </span>
-                          <span className="text-[10px] text-[hsl(var(--muted-foreground))]/40">·</span>
-                          <span className="text-[10px] tabular text-[hsl(var(--muted-foreground))]">
-                            {formatCurrency(d.slabInfo.pricePerCarat)}/ct
-                          </span>
-                        </>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -1169,7 +1283,9 @@ function SummaryView({
         {/* Subtotal + GST */}
         <div className="px-4 py-3 space-y-2">
           <div className="flex justify-between items-center">
-            <span className="text-sm text-[hsl(var(--muted-foreground))]">Subtotal</span>
+            <span className="text-sm text-[hsl(var(--muted-foreground))]">
+              Subtotal
+            </span>
             <span className="text-sm tabular font-medium">
               {formatCurrency(data.subTotal)}
             </span>
@@ -1204,16 +1320,31 @@ function SummaryView({
           </p>
           <ul className="space-y-0.5">
             <li className="text-[9px] text-[hsl(var(--muted-foreground))] leading-snug flex items-start gap-1.5">
-              <span className="text-[hsl(var(--muted-foreground))]/40 mt-0.5">•</span>
-              <span>Gold weight estimated might be slightly (5-10%) higher than actual weight of product, invoicing will be as per actuals</span>
+              <span className="text-[hsl(var(--muted-foreground))]/40 mt-0.5">
+                •
+              </span>
+              <span>
+                Gold weight estimated might be slightly (5-10%) higher than
+                actual weight of product, invoicing will be as per actuals
+              </span>
             </li>
             <li className="text-[9px] text-[hsl(var(--muted-foreground))] leading-snug flex items-start gap-1.5">
-              <span className="text-[hsl(var(--muted-foreground))]/40 mt-0.5">•</span>
-              <span>Prices quoted as on today&apos;s date, subject to fluctuations depending on the date of confirmation</span>
+              <span className="text-[hsl(var(--muted-foreground))]/40 mt-0.5">
+                •
+              </span>
+              <span>
+                Prices quoted as on today&apos;s date, subject to fluctuations
+                depending on the date of confirmation
+              </span>
             </li>
             <li className="text-[9px] text-[hsl(var(--muted-foreground))] leading-snug flex items-start gap-1.5">
-              <span className="text-[hsl(var(--muted-foreground))]/40 mt-0.5">•</span>
-              <span>For custom orders, a 50% advance payment is required to confirm the order and 75% to block the gold rate</span>
+              <span className="text-[hsl(var(--muted-foreground))]/40 mt-0.5">
+                •
+              </span>
+              <span>
+                For custom orders, a 50% advance payment is required to confirm
+                the order and 75% to block the gold rate
+              </span>
             </li>
           </ul>
         </div>
@@ -1244,10 +1375,10 @@ function SummaryView({
 
 export default function CalculatorView({ settings }: CalculatorViewProps) {
   // ── Data state (persisted) ──
-  const { 
-    formState, 
-    updateNetGoldWeight, 
-    updatePurity, 
+  const {
+    formState,
+    updateNetGoldWeight,
+    updatePurity,
     updateStones,
     updateProductName,
     updateProductNote,
@@ -1278,7 +1409,7 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
   const getStoneSlabs = useCallback(
     (stoneTypeId: string): Slab[] =>
       settings.stoneTypes.find((s) => s.stoneId === stoneTypeId)?.slabs ?? [],
-    [settings.stoneTypes]
+    [settings.stoneTypes],
   );
 
   // ── Calculations ──
@@ -1288,13 +1419,19 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
   const makingCost = calculateMakingCharge(
     netGoldWeight,
     settings.makingChargeFlat,
-    settings.makingChargePerGram
+    settings.makingChargePerGram,
   );
   const goldPlusMaking = goldCost + makingCost;
 
   const stoneDetails = stones.map((d) => {
-    const stoneType = settings.stoneTypes.find((s) => s.stoneId === d.stoneTypeId);
-    const slab = getStoneSlabs(d.stoneTypeId).find((sl) => sl.code === d.slabId);
+    const stoneType = settings.stoneTypes.find(
+      (s) => s.stoneId === d.stoneTypeId,
+    );
+    const slab = resolveAutoSlab(
+      getStoneSlabs(d.stoneTypeId),
+      d.weight,
+      d.quantity,
+    );
     const pricePerCarat = slab?.pricePerCarat ?? 0;
     const totalCost = pricePerCarat * d.weight;
     return {
@@ -1328,7 +1465,6 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
       {
         id: generateId(),
         stoneTypeId: settings.stoneTypes[0]?.stoneId ?? "",
-        slabId: settings.stoneTypes[0]?.slabs[0]?.code ?? "",
         weight: 0,
         quantity: 1,
       },
@@ -1343,11 +1479,14 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
   };
 
   // ── Image handling ──
-  const handleImageFile = useCallback((file: File) => {
-    if (!file.type.startsWith("image/")) return;
-    if (productImageUrl) URL.revokeObjectURL(productImageUrl);
-    setProductImageUrl(URL.createObjectURL(file));
-  }, [productImageUrl]);
+  const handleImageFile = useCallback(
+    (file: File) => {
+      if (!file.type.startsWith("image/")) return;
+      if (productImageUrl) URL.revokeObjectURL(productImageUrl);
+      setProductImageUrl(URL.createObjectURL(file));
+    },
+    [productImageUrl],
+  );
 
   const removeImage = () => {
     if (productImageUrl) URL.revokeObjectURL(productImageUrl);
