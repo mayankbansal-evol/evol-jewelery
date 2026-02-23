@@ -814,9 +814,9 @@ function FormView({
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      initial={{ opacity: 0, y: -16 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 16 }}
       transition={{ duration: 0.2 }}
       className="space-y-0"
     >
@@ -1069,10 +1069,10 @@ function SummaryView({
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -16 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-5">
@@ -1460,8 +1460,14 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
   const total = subTotal + gst;
 
   // ── Navigation ──
-  const goToSummary = () => setView("summary");
-  const goToForm = () => setView("form");
+  const goToSummary = () => {
+    window.scrollTo({ top: 0, left: 0 });
+    setView("summary");
+  };
+  const goToForm = () => {
+    window.scrollTo({ top: 0, left: 0 });
+    setView("form");
+  };
 
   const reset = () => {
     updateNetGoldWeight(0);
