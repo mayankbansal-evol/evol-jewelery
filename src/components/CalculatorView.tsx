@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { FixedSettings, DiamondEntry, Slab } from "@/lib/types";
 import { useCalculatorState } from "@/hooks/useCalculatorState";
 import { useNumericInput } from "@/hooks/useNumericInput";
+import { CARAT_TO_GRAM } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -1418,8 +1419,9 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
   );
 
   // ── Calculations ──
-  const totalStoneWeight = stones.reduce((sum, d) => sum + d.weight, 0);
-  const grossWeight = netGoldWeight + totalStoneWeight;
+  const totalStoneWeightInCarats = stones.reduce((sum, d) => sum + d.weight, 0);
+  const totalStoneWeightInGrams = totalStoneWeightInCarats * CARAT_TO_GRAM;
+  const grossWeight = netGoldWeight + totalStoneWeightInGrams;
   const goldCost = netGoldWeight * goldRateValue;
   const makingCost = calculateMakingCharge(
     netGoldWeight,
