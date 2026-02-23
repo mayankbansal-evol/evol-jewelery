@@ -13,8 +13,8 @@ export interface Slab {
 }
 
 export interface StoneType {
-  name: string;
   stoneId: string;
+  name: string;
   type: "Diamond" | "Gemstone";
   clarity: string;
   color: string;
@@ -50,24 +50,6 @@ export const DEFAULT_GOLD_RATES: GoldRate[] = [
   { purity: "18", label: "Net Wt (18)", rate: 11400 },
   { purity: "14", label: "Net Wt (14)", rate: 9000 },
 ];
-
-
-export interface Slab {
-  code: string;
-  fromWeight: number;
-  toWeight: number;
-  pricePerCarat: number;
-  discount: number;
-}
-
-export interface StoneType {
-  stoneId: string;
-  name: string;
-  type: "Diamond" | "Gemstone";
-  clarity: string;
-  color: string;
-  slabs: Slab[];
-}
 
 const roundSlabs: Slab[] = [
   { code: "LGDRDVVSEFWD1", fromWeight: 0.0001, toWeight: 0.0089, pricePerCarat: 25000, discount: 0 },
@@ -193,3 +175,54 @@ export const PURITY_MAP: Record<string, number> = {
   "18": 18,
   "14": 14,
 };
+
+// ─── Product Types (stored in DB — raw inputs only, no prices) ───────────────
+
+/** A single stone entry stored in the products table */
+export interface ProductStoneEntry {
+  stoneTypeId: string;
+  name: string;
+  weight: number;   // carats (net total weight for all pieces)
+  quantity: number; // number of pieces
+}
+
+/** Raw product record as stored in Supabase — no pricing data */
+export interface ProductRecord {
+  id: string;
+  created_at: string;
+  product_name: string;
+  product_image_url: string | null;
+  purity: string;           // "14" | "18" | "22" | "24"
+  net_gold_weight: number;  // grams
+  stones: ProductStoneEntry[];
+}
+
+/** A stone entry after dynamic pricing is applied using current settings */
+export interface ProductStoneWithPricing extends ProductStoneEntry {
+  pricePerCarat: number;
+  cost: number;
+  slabCode: string | null;
+}
+
+/** ProductRecord with all costs dynamically computed from current settings */
+export interface ProductWithPricing extends ProductRecord {
+  goldRate: number;
+  goldCost: number;
+  makingCost: number;
+  stoneCostTotal: number;
+  subTotal: number;
+  gst: number;
+  total: number;
+  stoneDetails: ProductStoneWithPricing[];
+}
+
+/** Filters for the History / Products list */
+export interface ProductFilters {
+  search: string;
+  purities: string[];      // e.g. ["18", "22"]
+  stoneTypeIds: string[];  // stoneTypeId values
+  goldWeightMin: string;
+  goldWeightMax: string;
+  priceMin: string;        // applied client-side after dynamic pricing
+  priceMax: string;
+}

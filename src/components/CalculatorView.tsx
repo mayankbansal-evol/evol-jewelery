@@ -5,6 +5,10 @@ import { FixedSettings, DiamondEntry, Slab } from "@/lib/types";
 import { useCalculatorState } from "@/hooks/useCalculatorState";
 import { useNumericInput } from "@/hooks/useNumericInput";
 import { CARAT_TO_GRAM } from "@/lib/constants";
+import { saveProduct } from "@/lib/productsApi";
+import type { ProductRecord } from "@/lib/types";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -36,6 +40,7 @@ import {
   Package,
   AlertCircle,
   Info,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +52,8 @@ const GOLD_PURITIES = ["24", "22", "18", "14"];
 
 interface CalculatorViewProps {
   settings: FixedSettings;
+  initialProduct?: ProductRecord | null;
+  onProductLoaded?: () => void; // called after initial product is consumed
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1379,7 +1386,11 @@ function SummaryView({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function CalculatorView({ settings }: CalculatorViewProps) {
+export default function CalculatorView({
+  settings,
+  initialProduct,
+  onProductLoaded,
+}: CalculatorViewProps) {
   // ── Data state (persisted) ──
   const {
     formState,
@@ -1392,12 +1403,54 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
 
   const { netGoldWeight, purity, stones, productName, productNote } = formState;
 
-  // ── Product state (not persisted - image is objectURL) ──
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // ── Product image state ──
+  // productImageUrl: ObjectURL for a newly selected file (revoked on cleanup)
+  // existingImageUrl: URL already stored in Supabase (from a loaded product)
   const [productImageUrl, setProductImageUrl] = useState<string | null>(null);
+  const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null);
+  const productImageFileRef = useRef<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── "Loaded from history" banner ──
+  const [loadedFromName, setLoadedFromName] = useState<string | null>(null);
 
   // ── View state ──
   const [view, setView] = useState<"form" | "summary">("form");
+
+  // ── Load initial product from history (pre-fill form) ──
+  useEffect(() => {
+    if (!initialProduct) return;
+
+    updateNetGoldWeight(initialProduct.net_gold_weight);
+    updatePurity(initialProduct.purity);
+    updateProductName(initialProduct.product_name);
+
+    // Map ProductStoneEntry → DiamondEntry (add local id)
+    const mappedStones = initialProduct.stones.map((s) => ({
+      id: generateId(),
+      stoneTypeId: s.stoneTypeId,
+      weight: s.weight,
+      quantity: s.quantity,
+    }));
+    updateStones(mappedStones.length > 0 ? mappedStones : [
+      { id: generateId(), stoneTypeId: settings.stoneTypes[0]?.stoneId ?? "", weight: 0, quantity: 1 },
+    ]);
+
+    // Show existing image from Supabase URL (no File object)
+    setExistingImageUrl(initialProduct.product_image_url);
+    // Clear any locally selected file
+    if (productImageUrl) URL.revokeObjectURL(productImageUrl);
+    setProductImageUrl(null);
+    productImageFileRef.current = null;
+
+    setLoadedFromName(initialProduct.product_name);
+    setView("form");
+    onProductLoaded?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialProduct]);
 
   // ── Gold rates ──
   const calculatedGoldRates = useMemo(() => {
@@ -1461,11 +1514,57 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
   const gst = subTotal * settings.gstRate;
   const total = subTotal + gst;
 
+  // The effective image url to display (new local blob takes priority over existing URL)
+  const displayImageUrl = productImageUrl ?? existingImageUrl;
+
   // ── Navigation ──
   const goToSummary = () => {
     window.scrollTo({ top: 0, left: 0 });
     setView("summary");
+
+    // Guard: require name + image to save
+    const hasName = productName.trim().length > 0;
+    const hasImage = productImageFileRef.current !== null || existingImageUrl !== null;
+
+    if (!hasName || !hasImage) {
+      toast({
+        title: "Product not saved",
+        description: !hasName
+          ? "Add a product name to save to history."
+          : "Add a product image to save to history.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Build stones payload — only raw inputs, no pricing
+    const stonesPayload = stoneDetails.map((d) => ({
+      stoneTypeId: d.stoneTypeId,
+      name: d.stoneType?.name ?? "",
+      weight: d.weight,
+      quantity: d.quantity,
+    }));
+
+    saveProduct({
+      productName,
+      productImageFile: productImageFileRef.current,
+      existingImageUrl,
+      purity,
+      netGoldWeight,
+      stones: stonesPayload,
+    }).then(({ error }) => {
+      if (error) {
+        toast({
+          title: "Could not save product",
+          description: error,
+          variant: "destructive",
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["products"] });
+      }
+    });
   };
+
   const goToForm = () => {
     window.scrollTo({ top: 0, left: 0 });
     setView("form");
@@ -1488,6 +1587,9 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
       URL.revokeObjectURL(productImageUrl);
       setProductImageUrl(null);
     }
+    setExistingImageUrl(null);
+    productImageFileRef.current = null;
+    setLoadedFromName(null);
     setView("form");
   };
 
@@ -1495,7 +1597,11 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
   const handleImageFile = useCallback(
     (file: File) => {
       if (!file.type.startsWith("image/")) return;
+      // Revoke previous local blob
       if (productImageUrl) URL.revokeObjectURL(productImageUrl);
+      // Clear existing URL — user has chosen a new image
+      setExistingImageUrl(null);
+      productImageFileRef.current = file;
       setProductImageUrl(URL.createObjectURL(file));
     },
     [productImageUrl],
@@ -1503,11 +1609,42 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
 
   const removeImage = () => {
     if (productImageUrl) URL.revokeObjectURL(productImageUrl);
+    productImageFileRef.current = null;
     setProductImageUrl(null);
+    setExistingImageUrl(null);
   };
 
   return (
     <div className="relative w-full max-w-lg mx-auto">
+      {/* "Loaded from history" banner */}
+      <AnimatePresence>
+        {loadedFromName && view === "form" && (
+          <motion.div
+            key="loaded-banner"
+            initial={{ opacity: 0, y: -8, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, y: -8, height: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="overflow-hidden mb-3"
+          >
+            <div className="flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl bg-[hsl(var(--foreground))]/6 border border-[hsl(var(--foreground))]/10">
+              <div className="flex items-center gap-2 min-w-0">
+                <History className="w-3.5 h-3.5 text-[hsl(var(--muted-foreground))] shrink-0" />
+                <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">
+                  Pre-filled from <span className="font-medium text-[hsl(var(--foreground))]">{loadedFromName}</span>
+                </span>
+              </div>
+              <button
+                onClick={() => setLoadedFromName(null)}
+                className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="bg-[hsl(var(--card))] rounded-2xl step-card p-7 overflow-hidden">
         <AnimatePresence mode="wait">
           {view === "form" ? (
@@ -1515,7 +1652,7 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
               key="form"
               settings={settings}
               formState={formState}
-              productImageUrl={productImageUrl}
+              productImageUrl={displayImageUrl}
               fileInputRef={fileInputRef}
               updateNetGoldWeight={updateNetGoldWeight}
               updatePurity={updatePurity}
@@ -1531,7 +1668,7 @@ export default function CalculatorView({ settings }: CalculatorViewProps) {
               key="summary"
               data={{
                 productName,
-                productImageUrl,
+                productImageUrl: displayImageUrl,
                 productNote,
                 netGoldWeight,
                 purity,

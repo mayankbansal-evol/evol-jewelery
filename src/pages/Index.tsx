@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Settings, RefreshCw, AlertTriangle, X } from "lucide-react";
+import { Settings, RefreshCw, AlertTriangle, X, Calculator, History } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -10,9 +10,12 @@ import {
 } from "@/components/ui/sheet";
 import SettingsView from "@/components/SettingsView";
 import CalculatorView from "@/components/CalculatorView";
+import HistoryView from "@/components/HistoryView";
 import { useSettings } from "@/hooks/useSettings";
 import { useSyncFromSheet } from "@/hooks/useSyncFromSheet";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import type { ProductRecord } from "@/lib/types";
 
 const TWO_HOURS_MS  = 2  * 60 * 60 * 1000;
 const SIX_HOURS_MS  = 6  * 60 * 60 * 1000;
@@ -30,13 +33,26 @@ function staleLabel(lastSynced: string | null): string {
   return `Prices may be out of date — last synced ${hrs} hours ago.`;
 }
 
+type Tab = "calculator" | "history";
+
 const Index = () => {
   const { settings, setSettings, lastSynced, applySync } = useSettings();
   const { sync, isSyncing } = useSyncFromSheet();
   const { toast } = useToast();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>("calculator");
+  const [loadedProduct, setLoadedProduct] = useState<ProductRecord | null>(null);
   const autoSyncRan = useRef(false);
+
+  const handleLoadProduct = (product: ProductRecord) => {
+    setLoadedProduct(product);
+    setActiveTab("calculator");
+  };
+
+  const handleProductLoaded = () => {
+    setLoadedProduct(null);
+  };
 
   // Auto-sync on mount if never synced or stale > 2 hrs
   useEffect(() => {
@@ -89,6 +105,34 @@ const Index = () => {
             <span className="text-sm font-semibold tracking-tight text-[hsl(var(--foreground))]">
               Jewelry Calculator
             </span>
+          </div>
+
+          {/* Center — tab pills */}
+          <div className="flex items-center gap-1 bg-[hsl(var(--muted))] rounded-lg p-0.5">
+            <button
+              onClick={() => setActiveTab("calculator")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                activeTab === "calculator"
+                  ? "bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-sm"
+                  : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+              )}
+            >
+              <Calculator className="w-3 h-3" />
+              Calculator
+            </button>
+            <button
+              onClick={() => setActiveTab("history")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                activeTab === "history"
+                  ? "bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-sm"
+                  : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+              )}
+            >
+              <History className="w-3 h-3" />
+              History
+            </button>
           </div>
 
           {/* Right side — sync spinner + settings trigger */}
@@ -158,14 +202,31 @@ const Index = () => {
       {/* Main content */}
       <main className="max-w-2xl mx-auto px-5 py-10">
         <AnimatePresence mode="wait">
-          <motion.div
-            key="calculator"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.05, ease: "easeOut" }}
-          >
-            <CalculatorView settings={settings} />
-          </motion.div>
+          {activeTab === "calculator" ? (
+            <motion.div
+              key="calculator"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+            >
+              <CalculatorView
+                settings={settings}
+                initialProduct={loadedProduct}
+                onProductLoaded={handleProductLoaded}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="history"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+            >
+              <HistoryView settings={settings} onLoadProduct={handleLoadProduct} />
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
