@@ -988,9 +988,14 @@ function FormView({
         {!canCalculate &&
           !netGoldWeight &&
           !stones.some((s) => s.weight > 0) && (
-            <p className="text-xs text-[hsl(var(--muted-foreground))] text-center">
-              Enter gold weight and stone details to continue
-            </p>
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center justify-center gap-1.5 text-xs text-[hsl(var(--destructive))]"
+            >
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Enter gold weight and stone details to continue</span>
+            </motion.div>
           )}
       </div>
     </motion.div>
@@ -1343,7 +1348,7 @@ function SummaryView({
               </span>
               <span>
                 For custom orders, a 50% advance payment is required to confirm
-                the order and 75% to block the gold rate
+                the order and 75% to lock the gold rate
               </span>
             </li>
           </ul>

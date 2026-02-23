@@ -30,11 +30,18 @@ import {
   ChevronLeft,
   Diamond,
   Percent,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
+import { useSyncFromSheet } from "@/hooks/useSyncFromSheet";
+import { useToast } from "@/hooks/use-toast";
 
 interface SettingsViewProps {
   settings: FixedSettings;
   onChange: (settings: FixedSettings) => void;
+  lastSynced: string | null;
+  onApplySync: (newSettings: FixedSettings, syncedAt: string) => void;
 }
 
 function genId() {
@@ -51,7 +58,35 @@ function formatCurrency(n: number) {
 
 const GOLD_PURITIES = ["24", "22", "18", "14"];
 
-export default function SettingsView({ settings, onChange }: SettingsViewProps) {
+export default function SettingsView({ settings, onChange, lastSynced, onApplySync }: SettingsViewProps) {
+  const { sync, isSyncing, syncError } = useSyncFromSheet();
+  const { toast } = useToast();
+
+  const handleSync = async () => {
+    const result = await sync(settings, onApplySync);
+    if (result.success) {
+      toast({
+        title: "Synced successfully",
+        description: "Prices have been updated from Google Sheets.",
+      });
+    } else {
+      toast({
+        title: "Sync failed",
+        description: result.error ?? "Could not fetch data from Google Sheets.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const lastSyncedLabel = (() => {
+    if (!lastSynced) return "Never synced";
+    const diff = Math.floor((Date.now() - new Date(lastSynced).getTime()) / 1000);
+    if (diff < 60) return "Last Synced just now";
+    if (diff < 3600) return `Last Synced ${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `Last Synced ${Math.floor(diff / 3600)}h ago`;
+    return `Last Synced ${Math.floor(diff / 86400)}d ago`;
+  })();
+
   const [editingStoneId, setEditingStoneId] = useState<string | null>(null);
   const [stoneToDelete, setStoneToDelete] = useState<string | null>(null);
   const [goldExpanded, setGoldExpanded] = useState(true);
@@ -145,6 +180,32 @@ export default function SettingsView({ settings, onChange }: SettingsViewProps) 
 
   return (
     <div className="space-y-4">
+      {/* Sync Banner */}
+      <div className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40">
+        <div className="flex items-center gap-2 min-w-0">
+          {syncError ? (
+            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+          ) : lastSynced ? (
+            <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+          ) : (
+            <RefreshCw className="w-4 h-4 text-[hsl(var(--muted-foreground))] shrink-0" />
+          )}
+          <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">
+            {syncError ? syncError : lastSyncedLabel}
+          </span>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleSync}
+          disabled={isSyncing}
+          className="ml-3 h-7 text-xs shrink-0 gap-1.5 border-[hsl(var(--border))]"
+        >
+          <RefreshCw className={`w-3 h-3 ${isSyncing ? "animate-spin" : ""}`} />
+          {isSyncing ? "Syncing…" : "Sync"}
+        </Button>
+      </div>
+
       {/* Gold Rates */}
       <Card className="border border-[hsl(var(--border))]">
         <CardContent className="p-4">
