@@ -1527,13 +1527,6 @@ export default function CalculatorView({
     const hasImage = productImageFileRef.current !== null || existingImageUrl !== null;
 
     if (!hasName || !hasImage) {
-      toast({
-        title: "Product not saved",
-        description: !hasName
-          ? "Add a product name to save to history."
-          : "Add a product image to save to history.",
-        variant: "destructive",
-      });
       return;
     }
 

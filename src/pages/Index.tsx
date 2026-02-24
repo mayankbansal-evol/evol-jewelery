@@ -1,6 +1,20 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Settings, RefreshCw, AlertTriangle, X, Calculator, History } from "lucide-react";
+import {
+  Settings,
+  RefreshCw,
+  AlertTriangle,
+  X,
+  ImageIcon,
+  CircleDollarSign,
+  Scale,
+  Gem,
+  ArrowRight,
+  Loader2,
+  PackageSearch,
+  Sparkles,
+} from "lucide-react";
+import { Link } from "react-router-dom";
 import {
   Sheet,
   SheetContent,
@@ -10,15 +24,16 @@ import {
 } from "@/components/ui/sheet";
 import SettingsView from "@/components/SettingsView";
 import CalculatorView from "@/components/CalculatorView";
-import HistoryView from "@/components/HistoryView";
 import { useSettings } from "@/hooks/useSettings";
 import { useSyncFromSheet } from "@/hooks/useSyncFromSheet";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
-import type { ProductRecord } from "@/lib/types";
+import { useProducts } from "@/hooks/useProducts";
+import { format } from "date-fns";
+import type { ProductRecord, ProductWithPricing } from "@/lib/types";
 
-const TWO_HOURS_MS  = 2  * 60 * 60 * 1000;
-const SIX_HOURS_MS  = 6  * 60 * 60 * 1000;
+const LOADED_PRODUCT_KEY = "evol_loaded_product";
+const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 
 function staleness(lastSynced: string | null): number {
   if (!lastSynced) return Infinity;
@@ -27,13 +42,174 @@ function staleness(lastSynced: string | null): number {
 
 function staleLabel(lastSynced: string | null): string {
   if (!lastSynced) return "Prices have never been synced from the sheet.";
-  const hrs = Math.floor(staleness(lastSynced) / 3600_000);
+  const hrs = Math.floor(staleness(lastSynced) / 3_600_000);
   if (hrs < 1) return "Prices may be out of date — last synced less than an hour ago.";
   if (hrs === 1) return "Prices may be out of date — last synced 1 hour ago.";
   return `Prices may be out of date — last synced ${hrs} hours ago.`;
 }
 
-type Tab = "calculator" | "history";
+function formatCurrency(n: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
+// ─── Recent product mini-card ─────────────────────────────────────────────────
+
+function RecentProductCard({
+  product,
+  onLoad,
+}: {
+  product: ProductWithPricing;
+  onLoad: (p: ProductRecord) => void;
+}) {
+  const stoneChips = Array.from(
+    new Map(product.stones.map((s) => [s.stoneTypeId, s.name])).values()
+  );
+  const dateLabel = format(new Date(product.created_at), "dd MMM");
+
+  return (
+    <motion.button
+      layout
+      initial={{ opacity: 0, x: 8 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 8 }}
+      transition={{ duration: 0.18 }}
+      onClick={() => onLoad(product)}
+      className="w-full text-left flex items-start gap-3.5 p-3 rounded-xl hover:bg-[hsl(var(--muted))]/60 transition-colors group"
+    >
+      {/* Thumbnail */}
+      <div className="w-16 h-16 rounded-xl shrink-0 overflow-hidden bg-[hsl(var(--muted))]">
+        {product.product_image_url ? (
+          <img
+            src={product.product_image_url}
+            alt={product.product_name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <ImageIcon className="w-5 h-5 text-[hsl(var(--muted-foreground))]/30" />
+          </div>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0 pt-0.5">
+        <p className="text-sm font-semibold text-[hsl(var(--foreground))] truncate leading-snug mb-1.5">
+          {product.product_name}
+        </p>
+
+        {/* Badges */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[hsl(var(--foreground))] text-[hsl(var(--background))]">
+            <CircleDollarSign className="w-2.5 h-2.5" />
+            {product.purity}K
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]">
+            <Scale className="w-2.5 h-2.5" />
+            {product.net_gold_weight}g
+          </span>
+          {stoneChips[0] && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]">
+              <Gem className="w-2.5 h-2.5" />
+              {stoneChips[0]}
+            </span>
+          )}
+        </div>
+
+        {/* Price + date */}
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-sm font-bold tabular-nums text-[hsl(var(--foreground))]">
+            {formatCurrency(product.total)}
+          </p>
+          <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{dateLabel}</p>
+        </div>
+      </div>
+    </motion.button>
+  );
+}
+
+// ─── Recent products sidebar panel ────────────────────────────────────────────
+
+function RecentProductsPanel({
+  settings,
+  onLoad,
+}: {
+  settings: ReturnType<typeof useSettings>["settings"];
+  onLoad: (p: ProductRecord) => void;
+}) {
+  const { products, isLoading } = useProducts(settings);
+
+  // Show newest 8
+  const recent = [...products]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 8);
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Panel header */}
+      <div className="flex items-center justify-between mb-3 px-1">
+        <div>
+          <h3 className="text-sm font-semibold text-[hsl(var(--foreground))] tracking-tight">
+            Recent Estimates
+          </h3>
+          {!isLoading && products.length > 0 && (
+            <p className="text-[10px] text-[hsl(var(--muted-foreground))]/60 mt-0.5 flex items-center gap-1">
+              <Sparkles className="w-2.5 h-2.5" />
+              Live prices
+            </p>
+          )}
+        </div>
+        <Link
+          to="/history"
+          className="flex items-center gap-1 text-[10px] font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors group"
+        >
+          See all
+          <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+        </Link>
+      </div>
+
+      {/* Scrollable list */}
+      <div className="flex-1 overflow-y-auto -mx-1 px-1 space-y-0.5 min-h-0">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-10 text-[hsl(var(--muted-foreground))]">
+            <Loader2 className="w-4 h-4 animate-spin" />
+          </div>
+        ) : recent.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 gap-2 text-center px-4">
+            <PackageSearch className="w-7 h-7 text-[hsl(var(--muted-foreground))]/25" />
+            <p className="text-xs text-[hsl(var(--muted-foreground))]/60 leading-snug">
+              No saved estimates yet
+            </p>
+          </div>
+        ) : (
+          <AnimatePresence mode="popLayout">
+            {recent.map((p) => (
+              <RecentProductCard key={p.id} product={p} onLoad={onLoad} />
+            ))}
+          </AnimatePresence>
+        )}
+      </div>
+
+      {/* See more footer */}
+      {products.length > 8 && (
+        <div className="pt-3 mt-2 border-t border-[hsl(var(--border))]/60">
+          <Link
+            to="/history"
+            className="flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]/60 transition-all"
+          >
+            View all {products.length} estimates
+            <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 const Index = () => {
   const { settings, setSettings, lastSynced, applySync } = useSettings();
@@ -41,17 +217,31 @@ const Index = () => {
   const { toast } = useToast();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>("calculator");
   const [loadedProduct, setLoadedProduct] = useState<ProductRecord | null>(null);
   const autoSyncRan = useRef(false);
 
-  const handleLoadProduct = (product: ProductRecord) => {
-    setLoadedProduct(product);
-    setActiveTab("calculator");
-  };
+  // Consume a product loaded from the /history page via localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOADED_PRODUCT_KEY);
+      if (raw) {
+        const product = JSON.parse(raw) as ProductRecord;
+        setLoadedProduct(product);
+        localStorage.removeItem(LOADED_PRODUCT_KEY);
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }, []);
 
   const handleProductLoaded = () => {
     setLoadedProduct(null);
+  };
+
+  const handleLoadFromRecent = (product: ProductRecord) => {
+    setLoadedProduct(product);
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // Auto-sync on mount if never synced or stale > 2 hrs
@@ -98,7 +288,7 @@ const Index = () => {
         transition={{ duration: 0.3, ease: "easeOut" }}
         className="sticky top-0 z-30 bg-[hsl(var(--background))]/90 backdrop-blur-sm border-b border-[hsl(var(--border))]"
       >
-        <div className="max-w-2xl mx-auto px-5 h-14 flex items-center justify-between">
+        <div className="max-w-[1072px] mx-auto px-6 h-14 flex items-center justify-between">
           {/* Brand */}
           <div className="flex items-center gap-2.5">
             <img src="/evol-logo.webp" alt="Evol" className="h-7 w-auto" />
@@ -107,36 +297,8 @@ const Index = () => {
             </span>
           </div>
 
-          {/* Center — tab pills */}
-          <div className="flex items-center gap-1 bg-[hsl(var(--muted))] rounded-lg p-0.5">
-            <button
-              onClick={() => setActiveTab("calculator")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                activeTab === "calculator"
-                  ? "bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-sm"
-                  : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-              )}
-            >
-              <Calculator className="w-3 h-3" />
-              Calculator
-            </button>
-            <button
-              onClick={() => setActiveTab("history")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                activeTab === "history"
-                  ? "bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-sm"
-                  : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-              )}
-            >
-              <History className="w-3 h-3" />
-              History
-            </button>
-          </div>
-
-          {/* Right side — sync spinner + settings trigger */}
-          <div className="flex items-center gap-1.5">
+          {/* Right side — sync spinner + history link + settings */}
+          <div className="flex items-center gap-2">
             <AnimatePresence>
               {isSyncing && (
                 <motion.span
@@ -175,7 +337,7 @@ const Index = () => {
             className="overflow-hidden"
           >
             <div className="bg-amber-50 border-b border-amber-200 dark:bg-amber-950/30 dark:border-amber-800/50">
-              <div className="max-w-2xl mx-auto px-5 py-2.5 flex items-center gap-3">
+              <div className="max-w-[1072px] mx-auto px-6 py-2.5 flex items-center gap-3">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                 <p className="flex-1 text-xs text-amber-700 dark:text-amber-400 leading-snug">
                   {staleLabel(lastSynced)}
@@ -199,35 +361,35 @@ const Index = () => {
         )}
       </AnimatePresence>
 
-      {/* Main content */}
-      <main className="max-w-2xl mx-auto px-5 py-10">
-        <AnimatePresence mode="wait">
-          {activeTab === "calculator" ? (
-            <motion.div
-              key="calculator"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
-            >
-              <CalculatorView
-                settings={settings}
-                initialProduct={loadedProduct}
-                onProductLoaded={handleProductLoaded}
-              />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="history"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
-            >
-              <HistoryView settings={settings} onLoadProduct={handleLoadProduct} />
-            </motion.div>
-          )}
-        </AnimatePresence>
+      {/* Main content — two-column layout on wide screens */}
+      <main className="max-w-[1072px] mx-auto px-6 py-10">
+        <div className="flex gap-6 items-start">
+          {/* Calculator — fills all remaining space */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="flex-1 min-w-0"
+          >
+            <CalculatorView
+              settings={settings}
+              initialProduct={loadedProduct}
+              onProductLoaded={handleProductLoaded}
+            />
+          </motion.div>
+
+          {/* Recent estimates sidebar — only shown on lg+ screens */}
+          <motion.aside
+            initial={{ opacity: 0, x: 16 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3, delay: 0.1, ease: "easeOut" }}
+            className="hidden lg:flex flex-col w-80 shrink-0 sticky top-[4.5rem] max-h-[calc(100vh-6rem)]"
+          >
+            <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl p-4 flex flex-col h-full max-h-[calc(100vh-6rem)]">
+              <RecentProductsPanel settings={settings} onLoad={handleLoadFromRecent} />
+            </div>
+          </motion.aside>
+        </div>
       </main>
 
       {/* Settings drawer */}
