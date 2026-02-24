@@ -128,4 +128,14 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+
+  /* iPhone home indicator safe area */
+  .safe-area-pb {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Bottom nav height + safe area inset for main content clearance */
+  .pb-nav {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px) + 0.5rem);
+  }
 }

@@ -13,8 +13,10 @@ import {
   Loader2,
   PackageSearch,
   Sparkles,
+  Calculator,
+  History,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import {
   Sheet,
   SheetContent,
@@ -78,10 +80,10 @@ function RecentProductCard({
       exit={{ opacity: 0, x: 8 }}
       transition={{ duration: 0.18 }}
       onClick={() => onLoad(product)}
-      className="w-full text-left flex items-start gap-3.5 p-3 rounded-xl hover:bg-[hsl(var(--muted))]/60 transition-colors group"
+      className="w-full text-left flex items-start gap-3 p-3 rounded-xl hover:bg-[hsl(var(--muted))]/60 active:bg-[hsl(var(--muted))]/80 transition-colors group cursor-pointer"
     >
       {/* Thumbnail */}
-      <div className="w-16 h-16 rounded-xl shrink-0 overflow-hidden bg-[hsl(var(--muted))]">
+      <div className="w-14 h-14 rounded-xl shrink-0 overflow-hidden bg-[hsl(var(--muted))]">
         {product.product_image_url ? (
           <img
             src={product.product_image_url}
@@ -90,37 +92,37 @@ function RecentProductCard({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <ImageIcon className="w-5 h-5 text-[hsl(var(--muted-foreground))]/30" />
+            <ImageIcon className="w-4 h-4 text-[hsl(var(--muted-foreground))]/30" />
           </div>
         )}
       </div>
 
       {/* Info */}
       <div className="flex-1 min-w-0 pt-0.5">
-        <p className="text-sm font-semibold text-[hsl(var(--foreground))] truncate leading-snug mb-1.5">
+        <p className="text-sm font-semibold text-[hsl(var(--foreground))] truncate leading-snug mb-1">
           {product.product_name}
         </p>
 
         {/* Badges */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[hsl(var(--foreground))] text-[hsl(var(--background))]">
+        <div className="flex items-center gap-1 flex-wrap">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[hsl(var(--foreground))] text-[hsl(var(--background))]">
             <CircleDollarSign className="w-2.5 h-2.5" />
             {product.purity}K
           </span>
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]">
             <Scale className="w-2.5 h-2.5" />
             {product.net_gold_weight}g
           </span>
           {stoneChips[0] && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]">
-              <Gem className="w-2.5 h-2.5" />
-              {stoneChips[0]}
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] truncate max-w-[80px]">
+              <Gem className="w-2.5 h-2.5 shrink-0" />
+              <span className="truncate">{stoneChips[0]}</span>
             </span>
           )}
         </div>
 
         {/* Price + date */}
-        <div className="flex items-center justify-between mt-2">
+        <div className="flex items-center justify-between mt-1.5">
           <p className="text-sm font-bold tabular-nums text-[hsl(var(--foreground))]">
             {formatCurrency(product.total)}
           </p>
@@ -131,21 +133,22 @@ function RecentProductCard({
   );
 }
 
-// ─── Recent products sidebar panel ────────────────────────────────────────────
+// ─── Recent products panel (shared between sidebar and bottom panel) ──────────
 
 function RecentProductsPanel({
   settings,
   onLoad,
+  compact = false,
 }: {
   settings: ReturnType<typeof useSettings>["settings"];
   onLoad: (p: ProductRecord) => void;
+  compact?: boolean;
 }) {
   const { products, isLoading } = useProducts(settings);
 
-  // Show newest 8
   const recent = [...products]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 8);
+    .slice(0, compact ? 5 : 8);
 
   return (
     <div className="flex flex-col h-full">
@@ -174,12 +177,12 @@ function RecentProductsPanel({
       {/* Scrollable list */}
       <div className="flex-1 overflow-y-auto -mx-1 px-1 space-y-0.5 min-h-0">
         {isLoading ? (
-          <div className="flex items-center justify-center py-10 text-[hsl(var(--muted-foreground))]">
+          <div className="flex items-center justify-center py-8 text-[hsl(var(--muted-foreground))]">
             <Loader2 className="w-4 h-4 animate-spin" />
           </div>
         ) : recent.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 gap-2 text-center px-4">
-            <PackageSearch className="w-7 h-7 text-[hsl(var(--muted-foreground))]/25" />
+          <div className="flex flex-col items-center justify-center py-8 gap-2 text-center px-4">
+            <PackageSearch className="w-6 h-6 text-[hsl(var(--muted-foreground))]/25" />
             <p className="text-xs text-[hsl(var(--muted-foreground))]/60 leading-snug">
               No saved estimates yet
             </p>
@@ -194,7 +197,7 @@ function RecentProductsPanel({
       </div>
 
       {/* See more footer */}
-      {products.length > 8 && (
+      {products.length > (compact ? 5 : 8) && (
         <div className="pt-3 mt-2 border-t border-[hsl(var(--border))]/60">
           <Link
             to="/history"
@@ -240,7 +243,6 @@ const Index = () => {
 
   const handleLoadFromRecent = (product: ProductRecord) => {
     setLoadedProduct(product);
-    // Scroll to top
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -281,14 +283,14 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-[hsl(var(--surface))]">
-      {/* Top bar */}
+      {/* ── Top bar ────────────────────────────────────────────────────────── */}
       <motion.header
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
         className="sticky top-0 z-30 bg-[hsl(var(--background))]/90 backdrop-blur-sm border-b border-[hsl(var(--border))]"
       >
-        <div className="max-w-[1072px] mx-auto px-6 h-14 flex items-center justify-between">
+        <div className="max-w-[1072px] mx-auto px-4 md:px-6 h-14 flex items-center justify-between">
           {/* Brand */}
           <div className="flex items-center gap-2.5">
             <img src="/evol-logo.webp" alt="Evol" className="h-7 w-auto" />
@@ -297,7 +299,7 @@ const Index = () => {
             </span>
           </div>
 
-          {/* Right side — sync spinner + history link + settings */}
+          {/* Right side */}
           <div className="flex items-center gap-2">
             <AnimatePresence>
               {isSyncing && (
@@ -314,6 +316,16 @@ const Index = () => {
                 </motion.span>
               )}
             </AnimatePresence>
+
+            {/* History link — visible on desktop header, hidden on mobile (in bottom nav) */}
+            <Link
+              to="/history"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--foreground))]/40 transition-all"
+            >
+              <History className="w-3 h-3" />
+              History
+            </Link>
+
             <button
               onClick={() => setSettingsOpen(true)}
               aria-label="Open settings"
@@ -325,7 +337,7 @@ const Index = () => {
         </div>
       </motion.header>
 
-      {/* Stale-data warning banner */}
+      {/* ── Stale-data banner ──────────────────────────────────────────────── */}
       <AnimatePresence>
         {showBanner && (
           <motion.div
@@ -336,22 +348,22 @@ const Index = () => {
             transition={{ duration: 0.22, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <div className="bg-amber-50 border-b border-amber-200 dark:bg-amber-950/30 dark:border-amber-800/50">
-              <div className="max-w-[1072px] mx-auto px-6 py-2.5 flex items-center gap-3">
+            <div className="bg-amber-50 border-b border-amber-200">
+              <div className="max-w-[1072px] mx-auto px-4 md:px-6 py-2.5 flex items-center gap-3">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <p className="flex-1 text-xs text-amber-700 dark:text-amber-400 leading-snug">
+                <p className="flex-1 text-xs text-amber-700 leading-snug">
                   {staleLabel(lastSynced)}
                 </p>
                 <button
                   onClick={handleBannerSync}
-                  className="text-xs font-medium text-amber-700 dark:text-amber-400 underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-200 transition-colors shrink-0"
+                  className="text-xs font-medium text-amber-700 underline underline-offset-2 hover:text-amber-900 transition-colors shrink-0"
                 >
                   Sync now
                 </button>
                 <button
                   onClick={() => setBannerDismissed(true)}
                   aria-label="Dismiss"
-                  className="w-5 h-5 flex items-center justify-center text-amber-500 hover:text-amber-700 dark:hover:text-amber-300 transition-colors shrink-0"
+                  className="w-5 h-5 flex items-center justify-center text-amber-500 hover:text-amber-700 transition-colors shrink-0"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -361,15 +373,23 @@ const Index = () => {
         )}
       </AnimatePresence>
 
-      {/* Main content — two-column layout on wide screens */}
-      <main className="max-w-[1072px] mx-auto px-6 py-10">
-        <div className="flex gap-6 items-start">
-          {/* Calculator — fills all remaining space */}
+      {/* ── Main layout ────────────────────────────────────────────────────── */}
+      {/*
+        Layout strategy:
+        • lg+   : side-by-side  [Calculator (flex-1)] + [Sidebar (w-80 fixed)]
+        • < lg  : stacked       [Calculator] on top, [Recent Estimates] as a
+                                 panel below (always visible, not collapsed)
+        Bottom nav provides Calculator / History navigation on mobile.
+      */}
+      <main className="max-w-[1072px] mx-auto px-4 md:px-6 py-5 md:py-8 pb-nav lg:pb-10">
+        <div className="flex flex-col lg:flex-row gap-5 lg:gap-6 items-start">
+
+          {/* ── Calculator column ──────────────────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
-            className="flex-1 min-w-0"
+            className="w-full lg:flex-1 lg:min-w-0"
           >
             <CalculatorView
               settings={settings}
@@ -378,7 +398,8 @@ const Index = () => {
             />
           </motion.div>
 
-          {/* Recent estimates sidebar — only shown on lg+ screens */}
+          {/* ── Recent Estimates: sidebar on lg+, panel below on mobile/tablet ── */}
+          {/* Desktop sidebar */}
           <motion.aside
             initial={{ opacity: 0, x: 16 }}
             animate={{ opacity: 1, x: 0 }}
@@ -389,30 +410,53 @@ const Index = () => {
               <RecentProductsPanel settings={settings} onLoad={handleLoadFromRecent} />
             </div>
           </motion.aside>
+
+          {/* Mobile/tablet recent estimates — always visible below calculator */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.15, ease: "easeOut" }}
+            className="w-full lg:hidden"
+          >
+            <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl p-4" style={{ minHeight: "200px", maxHeight: "360px", display: "flex", flexDirection: "column" }}>
+              <RecentProductsPanel settings={settings} onLoad={handleLoadFromRecent} compact />
+            </div>
+          </motion.div>
+
         </div>
       </main>
 
-      {/* Settings drawer */}
+      {/* ── Settings drawer ────────────────────────────────────────────────── */}
       <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
         <SheetContent
           side="right"
           className="w-full sm:max-w-xl overflow-y-auto p-0"
         >
-          <SheetHeader className="px-6 pt-6 pb-4 border-b border-[hsl(var(--border))] sticky top-0 bg-[hsl(var(--background))] z-10">
-            <div className="flex items-center gap-2.5">
-              <div className="w-6 h-6 bg-[hsl(var(--foreground))] rounded-md flex items-center justify-center">
-                <Settings className="w-3 h-3 text-[hsl(var(--background))]" />
+          <SheetHeader className="px-5 pt-5 pb-4 border-b border-[hsl(var(--border))] sticky top-0 bg-[hsl(var(--background))] z-10">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 bg-[hsl(var(--foreground))] rounded-md flex items-center justify-center shrink-0">
+                  <Settings className="w-3 h-3 text-[hsl(var(--background))]" />
+                </div>
+                <SheetTitle className="text-base font-semibold text-[hsl(var(--foreground))]">
+                  Settings
+                </SheetTitle>
               </div>
-              <SheetTitle className="text-base font-semibold text-[hsl(var(--foreground))]">
-                Settings
-              </SheetTitle>
+              {/* Explicit close button — critical on mobile where swipe-to-close is the only other option */}
+              <button
+                onClick={() => setSettingsOpen(false)}
+                aria-label="Close settings"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
             <SheetDescription className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
               Adjust gold rates, making charges, tax, and stone pricing
             </SheetDescription>
           </SheetHeader>
 
-          <div className="px-6 py-5">
+          <div className="px-5 py-5">
             <SettingsView
               settings={settings}
               onChange={setSettings}
@@ -422,6 +466,39 @@ const Index = () => {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* ── Mobile Bottom Navigation ───────────────────────────────────────── */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-[hsl(var(--background))]/95 backdrop-blur-sm border-t border-[hsl(var(--border))] safe-area-pb">
+        <div className="flex items-center justify-around h-14">
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) =>
+              `flex flex-col items-center justify-center flex-1 h-full gap-1 transition-colors ${
+                isActive
+                  ? "text-[hsl(var(--foreground))]"
+                  : "text-[hsl(var(--muted-foreground))]"
+              }`
+            }
+          >
+            <Calculator className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Calculator</span>
+          </NavLink>
+          <NavLink
+            to="/history"
+            className={({ isActive }) =>
+              `flex flex-col items-center justify-center flex-1 h-full gap-1 transition-colors ${
+                isActive
+                  ? "text-[hsl(var(--foreground))]"
+                  : "text-[hsl(var(--muted-foreground))]"
+              }`
+            }
+          >
+            <History className="w-5 h-5" />
+            <span className="text-[10px] font-medium">History</span>
+          </NavLink>
+        </div>
+      </nav>
     </div>
   );
 };

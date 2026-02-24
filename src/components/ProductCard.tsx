@@ -93,9 +93,9 @@ function ProductDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 overflow-hidden max-w-sm rounded-2xl gap-0">
-        {/* Image header */}
-        <div className="relative w-full aspect-[16/9] bg-[hsl(var(--muted))] overflow-hidden">
+      <DialogContent className="p-0 overflow-hidden max-w-sm rounded-2xl gap-0 max-h-[92dvh] flex flex-col">
+        {/* Image header — shrinks on small screens */}
+        <div className="relative w-full aspect-[16/9] bg-[hsl(var(--muted))] overflow-hidden shrink-0 max-h-[35dvh]">
           {product.product_image_url ? (
             <img
               src={product.product_image_url}
@@ -114,8 +114,8 @@ function ProductDetailDialog({
           </span>
         </div>
 
-        {/* Body */}
-        <div className="px-5 pt-4 pb-5 space-y-4">
+        {/* Body — scrollable on short screens */}
+        <div className="px-5 pt-4 pb-5 space-y-4 overflow-y-auto flex-1 min-h-0">
           {/* Name + meta */}
           <DialogHeader className="space-y-0.5 text-left">
             <DialogTitle className="text-base font-bold text-[hsl(var(--foreground))] leading-snug">
@@ -402,7 +402,7 @@ export default function ProductCard({ product, onDelete, onLoad, view = "list" }
       >
         <div className="flex items-stretch select-none">
           {/* Product image — left strip */}
-          <div className="w-[88px] shrink-0 relative bg-[hsl(var(--muted))] overflow-hidden">
+          <div className="w-16 sm:w-[88px] shrink-0 relative bg-[hsl(var(--muted))] overflow-hidden">
             {product.product_image_url ? (
               <img
                 src={product.product_image_url}

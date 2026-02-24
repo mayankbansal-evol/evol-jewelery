@@ -239,6 +239,7 @@ export default function SettingsView({ settings, onChange, lastSynced, onApplySy
                     <span className="text-sm text-[hsl(var(--muted-foreground))]">₹</span>
                     <Input
                       type="number"
+                      inputMode="decimal"
                       step="0.001"
                       value={settings.goldRate24k}
                       onChange={(e) => updateGoldRate24k(Number(e.target.value))}
@@ -255,24 +256,25 @@ export default function SettingsView({ settings, onChange, lastSynced, onApplySy
                   {calculatedGoldRates.map((gr) => (
                     <div
                       key={gr.purity}
-                      className="flex items-center justify-between py-2 px-3 bg-[hsl(var(--muted))]/50 rounded-md"
+                      className="flex items-center justify-between py-2 px-3 bg-[hsl(var(--muted))]/50 rounded-md gap-2"
                     >
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs font-mono text-[hsl(var(--muted-foreground))] shrink-0">
                           {gr.purity}K
                         </span>
-                        <span className="text-sm text-[hsl(var(--foreground))]">{gr.label}</span>
+                        <span className="text-sm text-[hsl(var(--foreground))] shrink-0">{gr.label}</span>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 shrink-0">
                         <Input
                           type="number"
+                          inputMode="decimal"
                           step="0.1"
                           value={gr.percentage}
                           onChange={(e) => updatePurityPercentage(gr.purity, Number(e.target.value))}
-                          className="w-16 h-8 text-xs text-right border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                          className="w-14 h-8 text-xs text-right border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
                         />
-                        <span className="text-xs text-[hsl(var(--muted-foreground))]">%</span>
-                        <span className="text-sm font-mono text-[hsl(var(--muted-foreground))] ml-2">
+                        <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0">%</span>
+                        <span className="text-sm font-mono text-[hsl(var(--muted-foreground))] whitespace-nowrap shrink-0">
                           {formatCurrency(gr.rate)}/g
                         </span>
                       </div>
@@ -291,15 +293,15 @@ export default function SettingsView({ settings, onChange, lastSynced, onApplySy
           <Collapsible open={makingExpanded} onOpenChange={setMakingExpanded}>
             <CollapsibleTrigger asChild>
               <button className="w-full flex items-center justify-between py-1 hover:bg-[hsl(var(--muted))] rounded px-2 -mx-2 transition-colors">
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col items-start gap-0.5 min-w-0">
                   <span className="text-xs font-medium text-[hsl(var(--foreground))] uppercase tracking-wide">
                     Making Charges
                   </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-mono text-[hsl(var(--foreground))]">
-                    Flat: {formatCurrency(settings.makingChargeFlat)} | {formatCurrency(settings.makingChargePerGram)}/g
+                  <span className="text-[11px] font-mono text-[hsl(var(--muted-foreground))] truncate max-w-[200px] sm:max-w-none">
+                    Flat {formatCurrency(settings.makingChargeFlat)} · {formatCurrency(settings.makingChargePerGram)}/g
                   </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 ml-2">
                   {makingExpanded ? (
                     <ChevronUp className="w-4 h-4 text-[hsl(var(--foreground))]" />
                   ) : (
@@ -318,6 +320,7 @@ export default function SettingsView({ settings, onChange, lastSynced, onApplySy
                     <span className="text-sm text-[hsl(var(--muted-foreground))]">₹</span>
                     <Input
                       type="number"
+                      inputMode="decimal"
                       step="0.001"
                       value={settings.makingChargeFlat}
                       onChange={(e) => updateMakingFlat(Number(e.target.value))}
@@ -335,6 +338,7 @@ export default function SettingsView({ settings, onChange, lastSynced, onApplySy
                     <span className="text-sm text-[hsl(var(--muted-foreground))]">₹</span>
                     <Input
                       type="number"
+                      inputMode="decimal"
                       step="0.001"
                       value={settings.makingChargePerGram}
                       onChange={(e) => updateMakingPerGram(Number(e.target.value))}
@@ -381,6 +385,7 @@ export default function SettingsView({ settings, onChange, lastSynced, onApplySy
                   <div className="flex items-center gap-2">
                     <Input
                       type="number"
+                      inputMode="decimal"
                       step="0.1"
                       value={settings.gstRate * 100}
                       onChange={(e) => updateGstRate(Number(e.target.value))}
@@ -454,7 +459,7 @@ export default function SettingsView({ settings, onChange, lastSynced, onApplySy
                       </Badge>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                       <div className="space-y-1.5">
                         <label className="text-xs text-[hsl(var(--muted-foreground))]">Name</label>
                         <Input
@@ -534,57 +539,69 @@ export default function SettingsView({ settings, onChange, lastSynced, onApplySy
                         <div className="space-y-2">
                           {editingStone.slabs.map((sl, i) => (
                             <motion.div
-                              key={sl.code}
+                              key={sl.code + i}
                               initial={{ opacity: 0 }}
                               animate={{ opacity: 1 }}
-                              className="grid grid-cols-6 gap-2 items-end p-3 bg-[hsl(var(--muted))] rounded-md"
+                              className="p-3 bg-[hsl(var(--muted))] rounded-md space-y-3"
                             >
-                              <div className="space-y-1">
-                                <label className="text-[10px] text-[hsl(var(--muted-foreground))] block">ID</label>
-                                <Input
-                                  value={sl.code}
-                                  onChange={(e) => updateSlab(editingStone.stoneId, i, { code: e.target.value })}
-                                  className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
-                                />
+                              {/* Slab number + delete row */}
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-semibold tracking-widest uppercase text-[hsl(var(--muted-foreground))]/60">
+                                  Slab {i + 1}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeSlab(editingStone.stoneId, i)}
+                                  className="h-7 w-7 p-0 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] hover:bg-transparent"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
                               </div>
-                              <div className="space-y-1">
-                                <label className="text-[10px] text-[hsl(var(--muted-foreground))] block">From (ct)</label>
-                                <Input
-                                  type="number"
-                                  step="0.0001"
-                                  value={sl.fromWeight}
-                                  onChange={(e) => updateSlab(editingStone.stoneId, i, { fromWeight: Number(e.target.value) })}
-                                  className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
-                                />
+                              {/* Fields: 2-col grid that works on all screen sizes */}
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                                <div className="space-y-1">
+                                  <label className="text-[10px] text-[hsl(var(--muted-foreground))] block">ID / Code</label>
+                                  <Input
+                                    value={sl.code}
+                                    onChange={(e) => updateSlab(editingStone.stoneId, i, { code: e.target.value })}
+                                    className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[10px] text-[hsl(var(--muted-foreground))] block">₹/Carat</label>
+                                  <Input
+                                    type="number"
+                                    inputMode="decimal"
+                                    step="0.001"
+                                    value={sl.pricePerCarat}
+                                    onChange={(e) => updateSlab(editingStone.stoneId, i, { pricePerCarat: Number(e.target.value) })}
+                                    className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[10px] text-[hsl(var(--muted-foreground))] block">From (ct)</label>
+                                  <Input
+                                    type="number"
+                                    inputMode="decimal"
+                                    step="0.0001"
+                                    value={sl.fromWeight}
+                                    onChange={(e) => updateSlab(editingStone.stoneId, i, { fromWeight: Number(e.target.value) })}
+                                    className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-[10px] text-[hsl(var(--muted-foreground))] block">To (ct)</label>
+                                  <Input
+                                    type="number"
+                                    inputMode="decimal"
+                                    step="0.0001"
+                                    value={sl.toWeight}
+                                    onChange={(e) => updateSlab(editingStone.stoneId, i, { toWeight: Number(e.target.value) })}
+                                    className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
+                                  />
+                                </div>
                               </div>
-                              <div className="space-y-1">
-                                <label className="text-[10px] text-[hsl(var(--muted-foreground))] block">To (ct)</label>
-                                <Input
-                                  type="number"
-                                  step="0.0001"
-                                  value={sl.toWeight}
-                                  onChange={(e) => updateSlab(editingStone.stoneId, i, { toWeight: Number(e.target.value) })}
-                                  className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-[10px] text-[hsl(var(--muted-foreground))] block">₹/Carat</label>
-                                <Input
-                                  type="number"
-                                  step="0.001"
-                                  value={sl.pricePerCarat}
-                                  onChange={(e) => updateSlab(editingStone.stoneId, i, { pricePerCarat: Number(e.target.value) })}
-                                  className="h-8 text-xs border-0 border-b border-[hsl(var(--border))] rounded-none bg-transparent px-0 focus:ring-0 focus:border-[hsl(var(--foreground))]"
-                                />
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeSlab(editingStone.stoneId, i)}
-                                className="h-8 w-8 p-0 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--destructive))] hover:bg-transparent"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
                             </motion.div>
                           ))}
                         </div>
@@ -610,30 +627,27 @@ export default function SettingsView({ settings, onChange, lastSynced, onApplySy
                         <motion.div
                           key={st.stoneId}
                           layout
-                          className="flex items-center justify-between p-3 bg-[hsl(var(--muted))] rounded-md group"
+                          className="p-3 bg-[hsl(var(--muted))] rounded-md"
                         >
-                          <div className="flex items-center gap-3">
-                            <Diamond className="w-4 h-4 text-[hsl(var(--muted-foreground))]" />
-                            <div>
-                              <p className="text-sm font-medium text-[hsl(var(--foreground))]">{st.name}</p>
-                              <p className="text-[11px] text-[hsl(var(--muted-foreground))]">
-                                {st.stoneId} {st.clarity && `· ${st.clarity}`}
-                              </p>
+                          {/* Row 1: name + actions */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2 min-w-0">
+                              <Diamond className="w-4 h-4 text-[hsl(var(--muted-foreground))] mt-0.5 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-[hsl(var(--foreground))] break-words leading-snug">
+                                  {st.name}
+                                </p>
+                                <p className="text-[11px] text-[hsl(var(--muted-foreground))] truncate mt-0.5">
+                                  {st.stoneId}{st.clarity && ` · ${st.clarity}`}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <Badge variant="secondary" className="text-xs">
-                              {st.type}
-                            </Badge>
-                            <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]">
-                              {st.slabs.length} slabs
-                            </span>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1 shrink-0">
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setEditingStoneId(st.stoneId)}
-                                className="h-8 text-xs hover:bg-[hsl(var(--muted))] text-[hsl(var(--foreground))]"
+                                className="h-8 text-xs hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))] px-2.5"
                               >
                                 Edit
                               </Button>
@@ -646,6 +660,15 @@ export default function SettingsView({ settings, onChange, lastSynced, onApplySy
                                 <Trash2 className="w-3.5 h-3.5" />
                               </Button>
                             </div>
+                          </div>
+                          {/* Row 2: type badge + slabs count */}
+                          <div className="flex items-center gap-2 mt-2 pl-6">
+                            <Badge variant="secondary" className="text-xs">
+                              {st.type}
+                            </Badge>
+                            <span className="text-xs font-mono text-[hsl(var(--muted-foreground))]">
+                              {st.slabs.length} slabs
+                            </span>
                           </div>
                         </motion.div>
                       ))

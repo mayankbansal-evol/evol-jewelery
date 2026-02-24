@@ -207,7 +207,7 @@ function BigInput({
         placeholder={placeholder}
         autoFocus={autoFocus}
         className={cn(
-          "w-full bg-transparent text-[2rem] font-light text-[hsl(var(--foreground))]",
+          "w-full bg-transparent text-xl md:text-[2rem] font-light text-[hsl(var(--foreground))]",
           "placeholder:text-[hsl(var(--muted-foreground))]/30",
           "border-0 border-b-2 pb-2 focus:outline-none transition-colors tabular",
           focused
@@ -411,7 +411,7 @@ function StoneRow({
         {canRemove && (
           <button
             onClick={onRemove}
-            className="ml-auto flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]/50 hover:text-[hsl(var(--destructive))] transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+            className="ml-auto flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]/50 hover:text-[hsl(var(--destructive))] transition-colors md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
           >
             <Trash2 className="w-3 h-3" />
             Remove
@@ -858,7 +858,7 @@ function FormView({
                 }}
                 placeholder="0.000"
                 className={cn(
-                  "w-full bg-transparent text-[2rem] font-light text-[hsl(var(--foreground))]",
+                  "w-full bg-transparent text-xl md:text-[2rem] font-light text-[hsl(var(--foreground))]",
                   "placeholder:text-[hsl(var(--muted-foreground))]/30",
                   "border-0 border-b-2 pb-2 focus:outline-none transition-colors tabular",
                   goldWeightInput.isFocused
@@ -877,7 +877,7 @@ function FormView({
             <label className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/70 mb-3 block">
               Purity
             </label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {calculatedGoldRates.map((g) => (
                 <PurityCard
                   key={g.purity}
@@ -1085,7 +1085,7 @@ function SummaryView({
       {/* Header */}
       <div className="flex items-start justify-between mb-5">
         <div>
-          <h2 className="text-[1.6rem] font-semibold leading-tight text-[hsl(var(--foreground))]">
+          <h2 className="text-xl md:text-[1.6rem] font-semibold leading-tight text-[hsl(var(--foreground))]">
             Summary
           </h2>
           <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
@@ -1132,11 +1132,11 @@ function SummaryView({
           </div>
 
           {/* Name + note + total — right half */}
-          <div className="flex flex-col justify-between px-4 py-4 min-w-0">
-            <div className="min-w-0">
+          <div className="flex flex-col justify-between px-3 py-3 min-w-0 overflow-hidden">
+            <div className="min-w-0 overflow-hidden">
               <p
                 className={cn(
-                  "text-base font-semibold leading-snug",
+                  "text-sm font-semibold leading-snug break-words hyphens-auto line-clamp-3",
                   !data.productName.trim()
                     ? "text-[hsl(var(--muted-foreground))]"
                     : "text-[hsl(var(--foreground))]",
@@ -1145,18 +1145,18 @@ function SummaryView({
                 {displayName}
               </p>
               {data.productNote.trim() && (
-                <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1.5 line-clamp-3 leading-relaxed">
+                <p className="text-[11px] text-[hsl(var(--muted-foreground))] mt-1.5 line-clamp-2 leading-relaxed">
                   {data.productNote.trim()}
                 </p>
               )}
             </div>
 
             {/* Total anchored to bottom */}
-            <div className="mt-3">
-              <p className="text-[10px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/60 mb-0.5">
+            <div className="mt-2">
+              <p className="text-[9px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/60 mb-0.5">
                 Total
               </p>
-              <p className="text-xl font-bold tabular text-[hsl(var(--foreground))]">
+              <p className="text-lg font-bold tabular text-[hsl(var(--foreground))] leading-tight">
                 {formatCurrency(data.total)}
               </p>
             </div>
@@ -1184,7 +1184,7 @@ function SummaryView({
           </p>
 
           {/* Gold stats row */}
-          <div className="grid grid-cols-4 gap-2 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-2.5 text-sm">
             <div>
               <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">
                 Net Wt
@@ -1207,7 +1207,7 @@ function SummaryView({
                 {formatCurrency(data.goldRateValue)}
               </p>
             </div>
-            <div className="text-right">
+            <div className="sm:text-right">
               <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-0.5">
                 Cost
               </p>
@@ -1638,7 +1638,7 @@ export default function CalculatorView({
         )}
       </AnimatePresence>
 
-      <div className="bg-[hsl(var(--card))] rounded-2xl step-card p-7 overflow-hidden">
+      <div className="bg-[hsl(var(--card))] rounded-2xl step-card p-4 md:p-7 overflow-hidden">
         <AnimatePresence mode="wait">
           {view === "form" ? (
             <FormView

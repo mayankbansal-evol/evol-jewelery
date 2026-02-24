@@ -1,6 +1,6 @@
 import { motion } from "motion/react";
-import { Settings, RefreshCw, AlertTriangle, X, Calculator } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Settings, RefreshCw, AlertTriangle, X, Calculator, History } from "lucide-react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import { AnimatePresence } from "motion/react";
 import {
@@ -95,7 +95,7 @@ export default function HistoryPage() {
         transition={{ duration: 0.3, ease: "easeOut" }}
         className="sticky top-0 z-30 bg-[hsl(var(--background))]/90 backdrop-blur-sm border-b border-[hsl(var(--border))]"
       >
-        <div className="max-w-5xl mx-auto px-5 h-14 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-4 md:px-5 h-14 flex items-center justify-between">
           {/* Brand */}
           <Link to="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
             <img src="/evol-logo.webp" alt="Evol" className="h-7 w-auto" />
@@ -152,7 +152,7 @@ export default function HistoryPage() {
             className="overflow-hidden"
           >
             <div className="bg-amber-50 border-b border-amber-200 dark:bg-amber-950/30 dark:border-amber-800/50">
-              <div className="max-w-5xl mx-auto px-5 py-2.5 flex items-center gap-3">
+              <div className="max-w-5xl mx-auto px-4 md:px-5 py-2.5 flex items-center gap-3">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                 <p className="flex-1 text-xs text-amber-700 dark:text-amber-400 leading-snug">
                   {staleLabel(lastSynced)}
@@ -177,7 +177,7 @@ export default function HistoryPage() {
       </AnimatePresence>
 
       {/* Main content */}
-      <main className="max-w-5xl mx-auto px-5 py-8">
+      <main className="max-w-5xl mx-auto px-4 md:px-5 py-6 md:py-8 pb-nav lg:pb-8">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -190,20 +190,30 @@ export default function HistoryPage() {
       {/* Settings drawer */}
       <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
         <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto p-0">
-          <SheetHeader className="px-6 pt-6 pb-4 border-b border-[hsl(var(--border))] sticky top-0 bg-[hsl(var(--background))] z-10">
-            <div className="flex items-center gap-2.5">
-              <div className="w-6 h-6 bg-[hsl(var(--foreground))] rounded-md flex items-center justify-center">
-                <Settings className="w-3 h-3 text-[hsl(var(--background))]" />
+          <SheetHeader className="px-5 pt-5 pb-4 border-b border-[hsl(var(--border))] sticky top-0 bg-[hsl(var(--background))] z-10">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 bg-[hsl(var(--foreground))] rounded-md flex items-center justify-center shrink-0">
+                  <Settings className="w-3 h-3 text-[hsl(var(--background))]" />
+                </div>
+                <SheetTitle className="text-base font-semibold text-[hsl(var(--foreground))]">
+                  Settings
+                </SheetTitle>
               </div>
-              <SheetTitle className="text-base font-semibold text-[hsl(var(--foreground))]">
-                Settings
-              </SheetTitle>
+              {/* Explicit close — essential on mobile */}
+              <button
+                onClick={() => setSettingsOpen(false)}
+                aria-label="Close settings"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
             <SheetDescription className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
               Adjust gold rates, making charges, tax, and stone pricing
             </SheetDescription>
           </SheetHeader>
-          <div className="px-6 py-5">
+          <div className="px-5 py-5">
             <SettingsView
               settings={settings}
               onChange={setSettings}
@@ -213,6 +223,39 @@ export default function HistoryPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-[hsl(var(--background))] border-t border-[hsl(var(--border))] safe-area-pb">
+        <div className="flex items-center justify-around h-14">
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) =>
+              `flex flex-col items-center justify-center flex-1 h-full gap-1 transition-colors ${
+                isActive
+                  ? "text-[hsl(var(--foreground))]"
+                  : "text-[hsl(var(--muted-foreground))]"
+              }`
+            }
+          >
+            <Calculator className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Calculator</span>
+          </NavLink>
+          <NavLink
+            to="/history"
+            className={({ isActive }) =>
+              `flex flex-col items-center justify-center flex-1 h-full gap-1 transition-colors ${
+                isActive
+                  ? "text-[hsl(var(--foreground))]"
+                  : "text-[hsl(var(--muted-foreground))]"
+              }`
+            }
+          >
+            <History className="w-5 h-5" />
+            <span className="text-[10px] font-medium">History</span>
+          </NavLink>
+        </div>
+      </nav>
     </div>
   );
 }

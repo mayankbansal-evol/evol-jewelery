@@ -2,6 +2,12 @@ import { useCallback, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
   Search,
   X,
   SlidersHorizontal,
@@ -28,8 +34,8 @@ type SortKey = "date_desc" | "date_asc" | "price_desc" | "price_asc";
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "date_desc", label: "Newest first" },
   { key: "date_asc", label: "Oldest first" },
-  { key: "price_desc", label: "Price: high to low" },
-  { key: "price_asc", label: "Price: low to high" },
+  { key: "price_desc", label: "Price: high → low" },
+  { key: "price_asc", label: "Price: low → high" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -44,7 +50,7 @@ function activeFilterCount(filters: ProductFilters): number {
   return n;
 }
 
-// ─── Stone-type multi-select dropdown ─────────────────────────────────────────
+// ─── Stone-type multi-select ──────────────────────────────────────────────────
 
 function StoneTypeDropdown({
   stoneTypes,
@@ -65,18 +71,18 @@ function StoneTypeDropdown({
       <PopoverTrigger asChild>
         <button
           className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all w-full",
+            "flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs border transition-all w-full",
             selected.length > 0
               ? "border-[hsl(var(--foreground))]/40 bg-[hsl(var(--foreground))]/5 text-[hsl(var(--foreground))]"
               : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--foreground))]/30"
           )}
         >
-          <span className="flex-1 text-left">
+          <span className="flex-1 text-left truncate">
             {selected.length === 0
               ? "All stone types"
               : selected.length === 1
               ? stoneTypes.find((s) => s.stoneId === selected[0])?.name ?? "1 selected"
-              : `${selected.length} stone types`}
+              : `${selected.length} selected`}
           </span>
           {selected.length > 0 && (
             <span className="w-4 h-4 rounded-full bg-[hsl(var(--foreground))] text-[hsl(var(--background))] flex items-center justify-center text-[9px] font-bold shrink-0">
@@ -100,7 +106,7 @@ function StoneTypeDropdown({
               <button
                 key={s.stoneId}
                 onClick={() => onToggle(s.stoneId)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-[hsl(var(--muted))] transition-colors text-left"
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-[hsl(var(--muted))] transition-colors text-left"
               >
                 <span
                   className={cn(
@@ -114,7 +120,7 @@ function StoneTypeDropdown({
                     <Check className="w-2 h-2 text-[hsl(var(--background))]" />
                   )}
                 </span>
-                <span className="text-[hsl(var(--foreground))]">{s.name}</span>
+                <span className="text-[hsl(var(--foreground))] truncate">{s.name}</span>
               </button>
             ))}
           </div>
@@ -128,7 +134,7 @@ function StoneTypeDropdown({
               <button
                 key={s.stoneId}
                 onClick={() => onToggle(s.stoneId)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-[hsl(var(--muted))] transition-colors text-left"
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-[hsl(var(--muted))] transition-colors text-left"
               >
                 <span
                   className={cn(
@@ -142,7 +148,7 @@ function StoneTypeDropdown({
                     <Check className="w-2 h-2 text-[hsl(var(--background))]" />
                   )}
                 </span>
-                <span className="text-[hsl(var(--foreground))]">{s.name}</span>
+                <span className="text-[hsl(var(--foreground))] truncate">{s.name}</span>
               </button>
             ))}
           </div>
@@ -151,7 +157,7 @@ function StoneTypeDropdown({
           <button
             onClick={() => selected.forEach((id) => onToggle(id))}
             disabled={selected.length === 0}
-            className="w-full text-[10px] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] disabled:opacity-40 py-1 transition-colors"
+            className="w-full text-[10px] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] disabled:opacity-40 py-1.5 transition-colors"
           >
             Clear selection
           </button>
@@ -174,14 +180,14 @@ function SortDropdown({
   const current = SORT_OPTIONS.find((o) => o.key === value)!;
 
   return (
-    <div className="relative">
+    <div className="relative w-full">
       <button
         onClick={() => setOpen((p) => !p)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--foreground))]/30 transition-all whitespace-nowrap"
+        className="w-full flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--foreground))]/30 transition-all"
       >
-        <ArrowUpDown className="w-3 h-3" />
-        {current.label}
-        <ChevronDown className={cn("w-3 h-3 transition-transform", open && "rotate-180")} />
+        <ArrowUpDown className="w-3 h-3 shrink-0" />
+        <span className="flex-1 text-left truncate">{current.label}</span>
+        <ChevronDown className={cn("w-3 h-3 shrink-0 transition-transform", open && "rotate-180")} />
       </button>
 
       <AnimatePresence>
@@ -193,7 +199,7 @@ function SortDropdown({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -4, scale: 0.97 }}
               transition={{ duration: 0.12 }}
-              className="absolute top-full right-0 z-20 mt-1.5 min-w-[160px] bg-[hsl(var(--background))] border border-[hsl(var(--border))] rounded-xl shadow-lg overflow-hidden"
+              className="absolute top-full right-0 z-20 mt-1.5 min-w-full bg-[hsl(var(--background))] border border-[hsl(var(--border))] rounded-xl shadow-lg overflow-hidden"
             >
               {SORT_OPTIONS.map((opt) => (
                 <button
@@ -221,6 +227,146 @@ function SortDropdown({
   );
 }
 
+// ─── Filter Panel (shared between sheet on mobile and inline on desktop) ──────
+
+function FilterPanel({
+  filters,
+  settings,
+  filterCount,
+  updateFilter,
+  togglePurity,
+  toggleStoneType,
+  resetFilters,
+  onClose,
+}: {
+  filters: ProductFilters;
+  settings: FixedSettings;
+  filterCount: number;
+  updateFilter: <K extends keyof ProductFilters>(key: K, value: ProductFilters[K]) => void;
+  togglePurity: (p: string) => void;
+  toggleStoneType: (id: string) => void;
+  resetFilters: () => void;
+  onClose?: () => void;
+}) {
+  return (
+    <div className="space-y-5">
+      {/* Purity */}
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2.5">
+          Purity
+        </p>
+        <div className="flex gap-2">
+          {PURITIES.map((p) => (
+            <button
+              key={p}
+              onClick={() => togglePurity(p)}
+              className={cn(
+                "flex-1 py-2 rounded-lg text-xs font-medium border transition-all",
+                filters.purities.includes(p)
+                  ? "bg-[hsl(var(--foreground))] text-[hsl(var(--background))] border-[hsl(var(--foreground))]"
+                  : "bg-transparent text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))] hover:border-[hsl(var(--foreground))]/40"
+              )}
+            >
+              {p}K
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Stone type */}
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2.5">
+          Stone Type
+        </p>
+        <StoneTypeDropdown
+          stoneTypes={settings.stoneTypes}
+          selected={filters.stoneTypeIds}
+          onToggle={toggleStoneType}
+        />
+      </div>
+
+      {/* Gold weight */}
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2.5">
+          Gold Weight (g)
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            placeholder="Min"
+            value={filters.goldWeightMin}
+            onChange={(e) => updateFilter("goldWeightMin", e.target.value)}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--foreground))]/40 transition-colors"
+          />
+          <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0">–</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            placeholder="Max"
+            value={filters.goldWeightMax}
+            onChange={(e) => updateFilter("goldWeightMax", e.target.value)}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--foreground))]/40 transition-colors"
+          />
+        </div>
+      </div>
+
+      {/* Price range */}
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2.5">
+          Price (₹)
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            placeholder="Min"
+            value={filters.priceMin}
+            onChange={(e) => updateFilter("priceMin", e.target.value)}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--foreground))]/40 transition-colors"
+          />
+          <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0">–</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            placeholder="Max"
+            value={filters.priceMax}
+            onChange={(e) => updateFilter("priceMax", e.target.value)}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--foreground))]/40 transition-colors"
+          />
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center justify-between pt-1">
+        {filterCount > 0 ? (
+          <button
+            onClick={resetFilters}
+            className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
+          >
+            <X className="w-3 h-3" />
+            Clear all filters
+          </button>
+        ) : (
+          <div />
+        )}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-xs font-medium bg-[hsl(var(--foreground))] text-[hsl(var(--background))] hover:bg-[hsl(var(--foreground))]/90 transition-colors"
+          >
+            Done
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface HistoryViewProps {
@@ -240,8 +386,10 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
     removeProduct,
   } = useProducts(settings);
 
-  const [view, setView] = useState<CardView>("grid");
+  // On mobile: always list. On sm+: grid by default, user can toggle.
+  const [desktopView, setDesktopView] = useState<CardView>("grid");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [sort, setSort] = useState<SortKey>("date_desc");
 
   const updateFilter = useCallback(
@@ -293,8 +441,18 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
     }
   });
 
+  const filterPanelProps = {
+    filters,
+    settings,
+    filterCount,
+    updateFilter,
+    togglePurity,
+    toggleStoneType,
+    resetFilters,
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
 
       {/* ── Page header ──────────────────────────────────────────────────────── */}
       <div>
@@ -308,17 +466,17 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
         </p>
       </div>
 
-      {/* ── Toolbar row ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2">
-        {/* Search */}
-        <div className="relative flex-1">
+      {/* ── Toolbar ──────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-2">
+        {/* Search — full width always */}
+        <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(var(--muted-foreground))]" />
           <input
             type="text"
             placeholder="Search products…"
             value={filters.search}
             onChange={(e) => updateFilter("search", e.target.value)}
-            className="w-full pl-9 pr-9 py-2 text-sm rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]/50 focus:outline-none focus:border-[hsl(var(--foreground))]/40 transition-colors"
+            className="w-full pl-9 pr-9 py-2.5 text-sm rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]/50 focus:outline-none focus:border-[hsl(var(--foreground))]/40 transition-colors"
           />
           {filters.search && (
             <button
@@ -330,65 +488,107 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
           )}
         </div>
 
-        {/* Filters toggle */}
-        <button
-          onClick={() => setFiltersOpen((p) => !p)}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-all shrink-0",
-            filtersOpen || filterCount > 0
-              ? "bg-[hsl(var(--foreground))] text-[hsl(var(--background))] border-[hsl(var(--foreground))]"
-              : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--foreground))]/30"
-          )}
-        >
-          <SlidersHorizontal className="w-3.5 h-3.5" />
-          Filters
-          {filterCount > 0 && (
-            <span
+        {/* Controls row */}
+        <div className="flex items-center gap-2">
+          {/* Filters button — opens Sheet on mobile, toggles inline on desktop */}
+          <button
+            onClick={() => {
+              // sm and below → sheet; md+ → inline toggle
+              if (window.innerWidth < 768) {
+                setFilterSheetOpen(true);
+              } else {
+                setFiltersOpen((p) => !p);
+              }
+            }}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-all shrink-0",
+              (filtersOpen || filterSheetOpen) || filterCount > 0
+                ? "bg-[hsl(var(--foreground))] text-[hsl(var(--background))] border-[hsl(var(--foreground))]"
+                : "border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:border-[hsl(var(--foreground))]/30"
+            )}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>Filters</span>
+            {filterCount > 0 && (
+              <span
+                className={cn(
+                  "w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold",
+                  filterCount > 0
+                    ? "bg-[hsl(var(--background))] text-[hsl(var(--foreground))]"
+                    : "bg-[hsl(var(--foreground))] text-[hsl(var(--background))]"
+                )}
+              >
+                {filterCount}
+              </span>
+            )}
+          </button>
+
+          {/* Sort — flex-1 to fill space */}
+          <div className="flex-1">
+            <SortDropdown value={sort} onChange={setSort} />
+          </div>
+
+          {/* View toggle — only shown on sm+ since mobile always uses list */}
+          <div className="hidden sm:flex items-center gap-0.5 p-0.5 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 shrink-0">
+            <button
+              onClick={() => setDesktopView("grid")}
+              title="Grid view"
               className={cn(
-                "w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold",
-                filtersOpen || filterCount > 0
-                  ? "bg-[hsl(var(--background))] text-[hsl(var(--foreground))]"
-                  : "bg-[hsl(var(--foreground))] text-[hsl(var(--background))]"
+                "w-9 h-9 flex items-center justify-center rounded-md transition-all",
+                desktopView === "grid"
+                  ? "bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-sm"
+                  : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
               )}
             >
-              {filterCount}
-            </span>
-          )}
-        </button>
-
-        {/* Sort */}
-        <SortDropdown value={sort} onChange={setSort} />
-
-        {/* View toggle */}
-        <div className="flex items-center gap-0.5 p-0.5 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/40 shrink-0">
-          <button
-            onClick={() => setView("grid")}
-            title="Grid view"
-            className={cn(
-              "w-7 h-7 flex items-center justify-center rounded-md transition-all",
-              view === "grid"
-                ? "bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-sm"
-                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-            )}
-          >
-            <LayoutGrid className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setView("list")}
-            title="List view"
-            className={cn(
-              "w-7 h-7 flex items-center justify-center rounded-md transition-all",
-              view === "list"
-                ? "bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-sm"
-                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-            )}
-          >
-            <LayoutList className="w-3.5 h-3.5" />
-          </button>
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setDesktopView("list")}
+              title="List view"
+              className={cn(
+                "w-9 h-9 flex items-center justify-center rounded-md transition-all",
+                desktopView === "list"
+                  ? "bg-[hsl(var(--background))] text-[hsl(var(--foreground))] shadow-sm"
+                  : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+              )}
+            >
+              <LayoutList className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* ── Collapsible filter panel ──────────────────────────────────────────── */}
+      {/* ── Mobile Filter Sheet ─────────────────────────────────────────────── */}
+      <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
+        <SheetContent side="bottom" className="rounded-t-2xl p-0 max-h-[88dvh] overflow-y-auto">
+          <SheetHeader className="px-5 pt-5 pb-4 border-b border-[hsl(var(--border))]">
+            <div className="flex items-center justify-between">
+              <SheetTitle className="text-base font-semibold text-[hsl(var(--foreground))]">
+                Filters
+                {filterCount > 0 && (
+                  <span className="ml-2 inline-flex items-center justify-center w-5 h-5 rounded-full bg-[hsl(var(--foreground))] text-[hsl(var(--background))] text-[10px] font-bold">
+                    {filterCount}
+                  </span>
+                )}
+              </SheetTitle>
+              <button
+                onClick={() => setFilterSheetOpen(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </SheetHeader>
+          <div className="px-5 py-5">
+            <FilterPanel
+              {...filterPanelProps}
+              onClose={() => setFilterSheetOpen(false)}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Desktop inline filter panel ────────────────────────────────────── */}
       <AnimatePresence initial={false}>
         {filtersOpen && (
           <motion.div
@@ -397,15 +597,13 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-            className="overflow-hidden"
+            className="overflow-hidden hidden md:block"
           >
-            <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl p-4">
-              {/* Filter grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-
+            <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl p-5">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-5">
                 {/* Purity */}
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2.5">
                     Purity
                   </p>
                   <div className="flex gap-2">
@@ -425,10 +623,9 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
                     ))}
                   </div>
                 </div>
-
                 {/* Stone type */}
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2.5">
                     Stone Type
                   </p>
                   <StoneTypeDropdown
@@ -437,52 +634,38 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
                     onToggle={toggleStoneType}
                   />
                 </div>
-
                 {/* Gold weight */}
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2.5">
                     Gold Weight (g)
                   </p>
                   <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="Min"
+                    <input type="number" inputMode="decimal" min="0" placeholder="Min"
                       value={filters.goldWeightMin}
                       onChange={(e) => updateFilter("goldWeightMin", e.target.value)}
                       className="w-full px-3 py-1.5 text-xs rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--foreground))]/40 transition-colors"
                     />
                     <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0">–</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="Max"
+                    <input type="number" inputMode="decimal" min="0" placeholder="Max"
                       value={filters.goldWeightMax}
                       onChange={(e) => updateFilter("goldWeightMax", e.target.value)}
                       className="w-full px-3 py-1.5 text-xs rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--foreground))]/40 transition-colors"
                     />
                   </div>
                 </div>
-
                 {/* Price range */}
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[hsl(var(--muted-foreground))]/60 mb-2.5">
                     Price (₹)
                   </p>
                   <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="Min"
+                    <input type="number" inputMode="decimal" min="0" placeholder="Min"
                       value={filters.priceMin}
                       onChange={(e) => updateFilter("priceMin", e.target.value)}
                       className="w-full px-3 py-1.5 text-xs rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--foreground))]/40 transition-colors"
                     />
                     <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0">–</span>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="Max"
+                    <input type="number" inputMode="decimal" min="0" placeholder="Max"
                       value={filters.priceMax}
                       onChange={(e) => updateFilter("priceMax", e.target.value)}
                       className="w-full px-3 py-1.5 text-xs rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]/40 focus:outline-none focus:border-[hsl(var(--foreground))]/40 transition-colors"
@@ -490,8 +673,6 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
                   </div>
                 </div>
               </div>
-
-              {/* Footer — clear */}
               {filterCount > 0 && (
                 <div className="mt-4 pt-3 border-t border-[hsl(var(--border))]/60 flex justify-end">
                   <button
@@ -525,7 +706,7 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
           <p className="text-sm font-medium">
             {filterCount > 0 ? "No products match your filters" : "No products saved yet"}
           </p>
-          <p className="text-xs opacity-60">
+          <p className="text-xs opacity-60 text-center max-w-[240px]">
             {filterCount > 0
               ? "Try adjusting or clearing the filters"
               : "Add a product name and image in the Calculator, then hit Calculate"}
@@ -541,14 +722,41 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
         </div>
       ) : (
         <AnimatePresence mode="popLayout">
-          {view === "grid" ? (
+          {/*
+            Mobile (< sm):  always single-column list cards — full width
+            sm–lg:          2-column grid (or list if user toggled)
+            lg+:            3–4 column grid (or list if user toggled)
+          */}
+
+          {/* Mobile: always list, full width */}
+          <motion.div
+            key="mobile-list"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="sm:hidden space-y-3"
+          >
+            {sorted.map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                onDelete={handleDelete}
+                onLoad={handleLoad}
+                view="list"
+              />
+            ))}
+          </motion.div>
+
+          {/* sm+: respects desktop view toggle */}
+          {desktopView === "grid" ? (
             <motion.div
-              key="grid"
+              key="desktop-grid"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+              className="hidden sm:grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
             >
               {sorted.map((product) => (
                 <ProductCard
@@ -562,12 +770,12 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
             </motion.div>
           ) : (
             <motion.div
-              key="list"
+              key="desktop-list"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="space-y-3"
+              className="hidden sm:block space-y-3"
             >
               {sorted.map((product) => (
                 <ProductCard
