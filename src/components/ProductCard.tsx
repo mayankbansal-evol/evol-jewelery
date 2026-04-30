@@ -1,37 +1,23 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import {
-  Trash2,
   ImageIcon,
   Gem,
   CircleDollarSign,
   ArrowUpRight,
-  Loader2,
   Scale,
   Sparkles,
+  History,
 } from "lucide-react";
+import { format } from "date-fns";
 import type { ProductWithPricing } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -42,10 +28,10 @@ function formatCurrency(n: number) {
 }
 
 function formatWeight(n: number, decimals = 3) {
-  return new Intl.NumberFormat("en-IN", { maximumFractionDigits: decimals }).format(n);
+  return new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: decimals,
+  }).format(n);
 }
-
-// ─── Breakdown row ────────────────────────────────────────────────────────────
 
 function BreakdownRow({
   label,
@@ -70,31 +56,26 @@ function BreakdownRow({
   );
 }
 
-// ─── Detail dialog content ────────────────────────────────────────────────────
-
 function ProductDetailDialog({
   product,
   open,
   onOpenChange,
   onLoad,
-  onDeleteConfirmed,
 }: {
   product: ProductWithPricing;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onLoad: () => void;
-  onDeleteConfirmed: () => void;
 }) {
-  const hasStones = product.stoneDetails.some((s) => s.weight > 0);
+  const hasStones = product.stoneDetails.some((stone) => stone.weight > 0);
   const stoneChips = Array.from(
-    new Map(product.stones.map((s) => [s.stoneTypeId, s.name])).values()
+    new Map(product.stones.map((stone) => [stone.stoneTypeId, stone.name])).values(),
   );
-  const dateLabel = format(new Date(product.created_at), "dd MMM yyyy · hh:mm a");
+  const dateLabel = format(new Date(product.last_searched_at), "dd MMM yyyy · hh:mm a");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 overflow-hidden max-w-sm rounded-2xl gap-0 max-h-[92dvh] flex flex-col">
-        {/* Image header — shrinks on small screens */}
         <div className="relative w-full aspect-[16/9] bg-[hsl(var(--muted))] overflow-hidden shrink-0 max-h-[35dvh]">
           {product.product_image_url ? (
             <img
@@ -107,24 +88,23 @@ function ProductDetailDialog({
               <ImageIcon className="w-10 h-10 text-[hsl(var(--muted-foreground))]/20" />
             </div>
           )}
-          {/* Purity badge */}
           <span className="absolute top-3 left-3 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide bg-[hsl(var(--foreground))]/90 text-[hsl(var(--background))] backdrop-blur-sm">
             <CircleDollarSign className="w-3 h-3" />
             {product.purity}K
           </span>
         </div>
 
-        {/* Body — scrollable on short screens */}
         <div className="px-5 pt-4 pb-5 space-y-4 overflow-y-auto flex-1 min-h-0">
-          {/* Name + meta */}
           <DialogHeader className="space-y-0.5 text-left">
             <DialogTitle className="text-base font-bold text-[hsl(var(--foreground))] leading-snug">
               {product.product_name}
             </DialogTitle>
             <p className="text-[11px] text-[hsl(var(--muted-foreground))]/60">{dateLabel}</p>
+            <p className="text-[11px] text-[hsl(var(--muted-foreground))]/60">
+              Searched {product.search_count} {product.search_count === 1 ? "time" : "times"}
+            </p>
           </DialogHeader>
 
-          {/* Attribute badges */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]">
               <Scale className="w-2.5 h-2.5" />
@@ -141,7 +121,6 @@ function ProductDetailDialog({
             ))}
           </div>
 
-          {/* Stone breakdown */}
           {hasStones && (
             <div>
               <p className="text-[9px] font-bold tracking-widest uppercase text-[hsl(var(--muted-foreground))]/50 mb-2">
@@ -149,24 +128,24 @@ function ProductDetailDialog({
               </p>
               <div className="space-y-2">
                 {product.stoneDetails
-                  .filter((s) => s.weight > 0)
-                  .map((s, i) => (
-                    <div key={i} className="flex items-center justify-between gap-2">
+                  .filter((stone) => stone.weight > 0)
+                  .map((stone, index) => (
+                    <div key={index} className="flex items-center justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-[hsl(var(--foreground))] truncate">
-                          {s.name}
+                          {stone.name}
                         </p>
                         <p className="text-[10px] text-[hsl(var(--muted-foreground))]">
-                          {formatWeight(s.weight)} ct · {s.quantity} pcs
-                          {s.pricePerCarat > 0 && (
+                          {formatWeight(stone.weight)} ct · {stone.quantity} pcs
+                          {stone.pricePerCarat > 0 && (
                             <span className="ml-1 opacity-60">
-                              @ {formatCurrency(s.pricePerCarat)}/ct
+                              @ {formatCurrency(stone.pricePerCarat)}/ct
                             </span>
                           )}
                         </p>
                       </div>
                       <span className="text-xs font-semibold tabular-nums text-[hsl(var(--foreground))] shrink-0">
-                        {formatCurrency(s.cost)}
+                        {formatCurrency(stone.cost)}
                       </span>
                     </div>
                   ))}
@@ -174,7 +153,6 @@ function ProductDetailDialog({
             </div>
           )}
 
-          {/* Cost breakdown */}
           <div>
             <p className="text-[9px] font-bold tracking-widest uppercase text-[hsl(var(--muted-foreground))]/50 mb-1">
               Live Breakdown
@@ -188,72 +166,28 @@ function ProductDetailDialog({
               <BreakdownRow label="Subtotal" value={formatCurrency(product.subTotal)} bold />
               <BreakdownRow label="GST" value={formatCurrency(product.gst)} muted />
             </div>
-            {/* Total bar */}
             <div className="mt-2 flex items-center justify-between px-3 py-2.5 rounded-xl bg-[hsl(var(--foreground))] text-[hsl(var(--background))]">
               <span className="text-xs font-semibold tracking-wide">Total</span>
               <span className="text-base font-bold tabular-nums">{formatCurrency(product.total)}</span>
             </div>
           </div>
 
-          {/* Live pricing note */}
           <div className="flex items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))]/50">
             <Sparkles className="w-3 h-3 shrink-0" />
             <span>Prices calculated with current gold rates</span>
           </div>
 
-          {/* Actions */}
-          <div className="flex gap-2 pt-1">
-            {/* Delete with AlertDialog */}
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <button
-                  className={cn(
-                    "flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium",
-                    "border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]",
-                    "hover:border-[hsl(var(--destructive))]/40 hover:text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))]/5",
-                    "transition-all duration-150"
-                  )}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Delete
-                </button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete product?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    <span className="font-medium text-[hsl(var(--foreground))]">
-                      "{product.product_name}"
-                    </span>{" "}
-                    will be permanently removed. This cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => {
-                      onOpenChange(false);
-                      onDeleteConfirmed();
-                    }}
-                    className="bg-[hsl(var(--destructive))] text-white hover:bg-[hsl(var(--destructive))]/90"
-                  >
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-
-            {/* Load into calculator */}
+          <div className="pt-1">
             <button
               onClick={() => {
                 onOpenChange(false);
                 onLoad();
               }}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl",
+                "w-full flex items-center justify-center gap-2 py-2.5 rounded-xl",
                 "text-xs font-semibold tracking-wide",
                 "bg-[hsl(var(--foreground))] text-[hsl(var(--background))]",
-                "hover:opacity-90 transition-opacity duration-150"
+                "hover:opacity-90 transition-opacity duration-150",
               )}
             >
               <ArrowUpRight className="w-3.5 h-3.5" />
@@ -266,49 +200,32 @@ function ProductDetailDialog({
   );
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export type CardView = "grid" | "list";
 
 interface ProductCardProps {
   product: ProductWithPricing;
-  onDelete: (id: string) => void;
   onLoad: (product: ProductWithPricing) => void;
   view?: CardView;
 }
 
-export default function ProductCard({ product, onDelete, onLoad, view = "list" }: ProductCardProps) {
+export default function ProductCard({ product, onLoad, view = "list" }: ProductCardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  const handleDeleteConfirmed = async () => {
-    setDeleting(true);
-    await onDelete(product.id);
-    setDeleting(false);
-  };
-
-  const handleLoad = () => {
-    onLoad(product);
-  };
 
   const purityLabel = `${product.purity}K`;
-  const dateLabel = format(new Date(product.created_at), "dd MMM yyyy");
+  const dateLabel = format(new Date(product.last_searched_at), "dd MMM yyyy");
   const stoneChips = Array.from(
-    new Map(product.stones.map((s) => [s.stoneTypeId, s.name])).values()
+    new Map(product.stones.map((stone) => [stone.stoneTypeId, stone.name])).values(),
   );
 
-  // ── Shared dialog ──────────────────────────────────────────────────────────
   const dialog = (
     <ProductDetailDialog
       product={product}
       open={dialogOpen}
       onOpenChange={setDialogOpen}
-      onLoad={handleLoad}
-      onDeleteConfirmed={handleDeleteConfirmed}
+      onLoad={() => onLoad(product)}
     />
   );
 
-  // ── Grid Card ──────────────────────────────────────────────────────────────
   if (view === "grid") {
     return (
       <>
@@ -322,7 +239,6 @@ export default function ProductCard({ product, onDelete, onLoad, view = "list" }
           onClick={() => setDialogOpen(true)}
           className="group relative bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl overflow-hidden hover:shadow-md transition-shadow duration-200 cursor-pointer"
         >
-          {/* Image area */}
           <div className="relative w-full aspect-[4/3] bg-[hsl(var(--muted))] overflow-hidden">
             {product.product_image_url ? (
               <img
@@ -336,21 +252,12 @@ export default function ProductCard({ product, onDelete, onLoad, view = "list" }
               </div>
             )}
 
-            {/* Purity badge */}
             <span className="absolute top-2.5 left-2.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide bg-[hsl(var(--foreground))]/90 text-[hsl(var(--background))] backdrop-blur-sm">
               <CircleDollarSign className="w-2.5 h-2.5" />
               {purityLabel}
             </span>
-
-            {/* Deleting spinner overlay */}
-            {deleting && (
-              <div className="absolute inset-0 bg-[hsl(var(--background))]/60 flex items-center justify-center">
-                <Loader2 className="w-5 h-5 animate-spin text-[hsl(var(--foreground))]" />
-              </div>
-            )}
           </div>
 
-          {/* Card body */}
           <div className="px-3.5 pt-3 pb-3.5">
             <p className="font-semibold text-sm text-[hsl(var(--foreground))] leading-snug line-clamp-1 mb-1">
               {product.product_name}
@@ -381,13 +288,16 @@ export default function ProductCard({ product, onDelete, onLoad, view = "list" }
             <p className="mt-2 text-[10px] text-[hsl(var(--muted-foreground))]/40 font-medium">
               {dateLabel}
             </p>
+            <p className="mt-1 inline-flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]/60">
+              <History className="w-2.5 h-2.5" />
+              {product.search_count} {product.search_count === 1 ? "search" : "searches"}
+            </p>
           </div>
         </motion.div>
       </>
     );
   }
 
-  // ── List Card ──────────────────────────────────────────────────────────────
   return (
     <>
       {dialog}
@@ -401,7 +311,6 @@ export default function ProductCard({ product, onDelete, onLoad, view = "list" }
         className="group relative bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl overflow-hidden hover:shadow-sm transition-shadow duration-200 cursor-pointer"
       >
         <div className="flex items-stretch select-none">
-          {/* Product image — left strip */}
           <div className="w-16 sm:w-[88px] shrink-0 relative bg-[hsl(var(--muted))] overflow-hidden">
             {product.product_image_url ? (
               <img
@@ -414,20 +323,13 @@ export default function ProductCard({ product, onDelete, onLoad, view = "list" }
                 <ImageIcon className="w-6 h-6 text-[hsl(var(--muted-foreground))]/30" />
               </div>
             )}
-            {deleting && (
-              <div className="absolute inset-0 bg-[hsl(var(--background))]/60 flex items-center justify-center">
-                <Loader2 className="w-4 h-4 animate-spin text-[hsl(var(--foreground))]" />
-              </div>
-            )}
           </div>
 
-          {/* Content */}
           <div className="flex-1 min-w-0 px-4 py-3.5">
             <p className="font-semibold text-sm text-[hsl(var(--foreground))] leading-snug line-clamp-1 mb-2">
               {product.product_name}
             </p>
 
-            {/* Attribute badges */}
             <div className="flex items-center gap-2 flex-wrap mb-2.5">
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide bg-[hsl(var(--foreground))] text-[hsl(var(--background))]">
                 <CircleDollarSign className="w-2.5 h-2.5" />
@@ -453,7 +355,6 @@ export default function ProductCard({ product, onDelete, onLoad, view = "list" }
               )}
             </div>
 
-            {/* Price + date */}
             <div className="flex items-end justify-between">
               <div>
                 <p className="text-[9px] font-medium tracking-widest uppercase text-[hsl(var(--muted-foreground))]/50 mb-0.5">
@@ -461,6 +362,10 @@ export default function ProductCard({ product, onDelete, onLoad, view = "list" }
                 </p>
                 <p className="text-lg font-bold tabular-nums text-[hsl(var(--foreground))] leading-none">
                   {formatCurrency(product.total)}
+                </p>
+                <p className="mt-1 inline-flex items-center gap-1 text-[10px] text-[hsl(var(--muted-foreground))]/60">
+                  <History className="w-2.5 h-2.5" />
+                  {product.search_count} {product.search_count === 1 ? "search" : "searches"}
                 </p>
               </div>
               <p className="text-[9px] text-[hsl(var(--muted-foreground))]/40 font-medium">{dateLabel}</p>

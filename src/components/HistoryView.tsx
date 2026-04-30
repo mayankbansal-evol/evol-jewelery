@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { useProducts } from "@/hooks/useProducts";
 import ProductCard, { type CardView } from "@/components/ProductCard";
-import { useToast } from "@/hooks/use-toast";
 import type { FixedSettings, ProductRecord, ProductFilters } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -375,7 +374,6 @@ interface HistoryViewProps {
 }
 
 export default function HistoryView({ settings, onLoadProduct }: HistoryViewProps) {
-  const { toast } = useToast();
   const {
     products,
     isLoading,
@@ -383,7 +381,6 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
     filters,
     setFilters,
     resetFilters,
-    removeProduct,
   } = useProducts(settings);
 
   // On mobile: always list. On sm+: grid by default, user can toggle.
@@ -417,13 +414,6 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
     }));
   };
 
-  const handleDelete = async (id: string) => {
-    const { error } = await removeProduct(id);
-    if (error) {
-      toast({ title: "Delete failed", description: error, variant: "destructive" });
-    }
-  };
-
   const handleLoad = (product: ProductRecord) => {
     onLoadProduct?.(product);
   };
@@ -433,8 +423,8 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
   // Sort products
   const sorted = [...products].sort((a, b) => {
     switch (sort) {
-      case "date_desc": return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      case "date_asc":  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      case "date_desc": return new Date(b.last_searched_at).getTime() - new Date(a.last_searched_at).getTime();
+      case "date_asc":  return new Date(a.last_searched_at).getTime() - new Date(b.last_searched_at).getTime();
       case "price_desc": return b.total - a.total;
       case "price_asc":  return a.total - b.total;
       default: return 0;
@@ -741,7 +731,6 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
               <ProductCard
                 key={product.id}
                 product={product}
-                onDelete={handleDelete}
                 onLoad={handleLoad}
                 view="list"
               />
@@ -762,7 +751,6 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
                 <ProductCard
                   key={product.id}
                   product={product}
-                  onDelete={handleDelete}
                   onLoad={handleLoad}
                   view="grid"
                 />
@@ -781,7 +769,6 @@ export default function HistoryView({ settings, onLoadProduct }: HistoryViewProp
                 <ProductCard
                   key={product.id}
                   product={product}
-                  onDelete={handleDelete}
                   onLoad={handleLoad}
                   view="list"
                 />

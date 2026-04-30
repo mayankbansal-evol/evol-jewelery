@@ -1,15 +1,25 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { toPng } from "html-to-image";
 import { motion, AnimatePresence } from "motion/react";
-import { FixedSettings, DiamondEntry, Slab } from "@/lib/types";
+import {
+  FixedSettings,
+  DiamondEntry,
+  Slab,
+  CatalogueLookupProduct,
+} from "@/lib/types";
 import { useCalculatorState } from "@/hooks/useCalculatorState";
 import { useNumericInput } from "@/hooks/useNumericInput";
-import { CARAT_TO_GRAM } from "@/lib/constants";
-import { saveProduct } from "@/lib/productsApi";
+import { saveSearchEstimate } from "@/lib/productsApi";
 import type { ProductRecord } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  useCatalogueProductDetails,
+  useCatalogueProductSearch,
+} from "@/hooks/useCatalogueProductLookup";
 import { Button } from "@/components/ui/button";
+import { BarcodeScanDialog } from "@/components/BarcodeScanDialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -41,8 +51,22 @@ import {
   AlertCircle,
   Info,
   History,
+  Search,
+  MapPinned,
+  ScanLine,
+  Edit2,
+  PlusSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  calculateGoldRate,
+  computeEstimateFromInputs,
+  getStoneSlabs as getStoneSlabsForType,
+  resolveAutoSlab,
+  type PricingBreakdown,
+} from "@/lib/pricing";
+import { normalizeDecodedId } from "@/lib/barcodeScanner";
+import { normalizeCatalogueProduct } from "@/lib/catalogMapping";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -56,20 +80,23 @@ interface CalculatorViewProps {
   onProductLoaded?: () => void; // called after initial product is consumed
 }
 
+type EntryMode = "search" | "calculate";
+
+const ENTRY_MODE_STORAGE_KEY = "calculator-entry-mode";
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function generateId() {
   return Math.random().toString(36).slice(2, 9);
 }
 
-function calculateMakingCharge(
-  netGoldWeight: number,
-  flatRate: number,
-  perGramRate: number,
-): number {
-  if (netGoldWeight <= 0) return 0;
-  if (netGoldWeight < 2) return flatRate;
-  return netGoldWeight * perGramRate;
+function getStoredEntryMode(): EntryMode {
+  try {
+    const stored = localStorage.getItem(ENTRY_MODE_STORAGE_KEY);
+    return stored === "search" || stored === "calculate" ? stored : "calculate";
+  } catch {
+    return "calculate";
+  }
 }
 
 function formatCurrency(n: number) {
@@ -265,21 +292,6 @@ function PurityCard({
 }
 
 // ─── Auto slab lookup ────────────────────────────────────────────────────────
-
-function resolveAutoSlab(
-  slabs: Slab[],
-  weight: number,
-  quantity: number,
-): Slab | null {
-  if (weight <= 0 || slabs.length === 0) return null;
-  const pieces = Math.max(1, quantity);
-  const perPieceWeight = weight / pieces;
-  return (
-    slabs.find(
-      (sl) => perPieceWeight >= sl.fromWeight && perPieceWeight < sl.toWeight,
-    ) ?? null
-  );
-}
 
 // ─── Stone row ────────────────────────────────────────────────────────────────
 
@@ -707,6 +719,662 @@ function ProductSection({
 
 // ─── Form View ─────────────────────────────────────────────────────────────────
 
+function EstimateBreakdownCard({
+  productName,
+  productImageUrl,
+  productNote,
+  purity,
+  pricing,
+  gstRate,
+  externalPrice,
+  externalCurrency,
+  grossWeightOverride,
+  meta,
+}: {
+  productName: string;
+  productImageUrl: string | null;
+  productNote: string;
+  purity: string;
+  pricing: PricingBreakdown;
+  gstRate: number;
+  externalPrice?: number | null;
+  externalCurrency?: string;
+  grossWeightOverride?: number;
+  meta?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-[hsl(var(--border))] overflow-hidden bg-[hsl(var(--card))]">
+      <div className="p-4 flex items-center gap-3">
+        <div className="w-16 h-16 rounded-xl overflow-hidden bg-[hsl(var(--muted))] shrink-0">
+          {productImageUrl ? (
+            <img
+              src={productImageUrl}
+              alt={productName}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <ImageIcon className="w-5 h-5 text-[hsl(var(--muted-foreground))]/40" />
+            </div>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold truncate">{productName}</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">
+            {purity}K
+          </p>
+          {productNote.trim() && (
+            <p className="text-xs text-[hsl(var(--muted-foreground))] truncate mt-1">
+              {productNote.trim()}
+            </p>
+          )}
+          {meta}
+        </div>
+      </div>
+
+      <div className="px-4 pb-4 space-y-2.5 text-sm">
+        {externalPrice != null && (
+          <div className="flex items-center justify-between rounded-xl bg-[hsl(var(--muted))]/50 px-3 py-2">
+            <span className="text-[hsl(var(--muted-foreground))]">
+              Catalogue Price
+            </span>
+            <span className="font-semibold tabular">
+              {new Intl.NumberFormat("en-IN", {
+                style: "currency",
+                currency: externalCurrency || "INR",
+                maximumFractionDigits: 0,
+              }).format(externalPrice)}
+            </span>
+          </div>
+        )}
+
+        <div className="flex justify-between">
+          <span className="text-[hsl(var(--muted-foreground))]">
+            Gross Weight
+          </span>
+          <span className="font-medium tabular">
+            {formatNumber(grossWeightOverride ?? pricing.grossWeight)} g
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-[hsl(var(--muted-foreground))]">Gold</span>
+          <span className="font-medium tabular">
+            {formatCurrency(pricing.goldCost)}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-[hsl(var(--muted-foreground))]">Making</span>
+          <span className="font-medium tabular">
+            {formatCurrency(pricing.makingCost)}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-[hsl(var(--muted-foreground))]">Stones</span>
+          <span className="font-medium tabular">
+            {formatCurrency(pricing.totalStoneCost)}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-[hsl(var(--muted-foreground))]">
+            GST ({(gstRate * 100).toFixed(1)}%)
+          </span>
+          <span className="font-medium tabular">
+            {formatCurrency(pricing.gst)}
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-[hsl(var(--foreground))] text-[hsl(var(--background))] px-4 py-3 flex items-center justify-between">
+        <span className="text-sm font-medium">Local Estimate</span>
+        <span className="text-xl font-bold tabular">
+          {formatCurrency(pricing.total)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function CatalogueLookupSection({ settings }: { settings: FixedSettings }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [searchInput, setSearchInput] = useState("");
+  const [submittedCode, setSubmittedCode] = useState("");
+  const [hasSearched, setHasSearched] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const savedLookupKeyRef = useRef<string | null>(null);
+
+  const searchQuery = useCatalogueProductSearch(submittedCode, hasSearched);
+  const selectedResult = searchQuery.data;
+  const detailsQuery = useCatalogueProductDetails(
+    selectedResult?.slug ?? null,
+    !!selectedResult,
+  );
+
+  const normalizedEstimate = useMemo(() => {
+    if (!detailsQuery.data) return null;
+    return normalizeCatalogueProduct(detailsQuery.data, settings);
+  }, [detailsQuery.data, settings]);
+
+  const normalizedProduct: CatalogueLookupProduct | null =
+    normalizedEstimate?.product ?? null;
+  const hasIssues = (normalizedEstimate?.issues.length ?? 0) > 0;
+
+  const submitLookupCode = (rawCode: string) => {
+    const code = normalizeDecodedId(rawCode);
+    if (!code) return false;
+
+    setSearchInput(code);
+
+    if (hasSearched && code === submittedCode) {
+      searchQuery.refetch();
+      if (selectedResult?.slug) {
+        detailsQuery.refetch();
+      }
+      return true;
+    }
+
+    savedLookupKeyRef.current = null;
+    setHasSearched(true);
+    setSubmittedCode(code);
+    return true;
+  };
+
+  useEffect(() => {
+    if (!normalizedEstimate || !submittedCode) return;
+    if (savedLookupKeyRef.current === normalizedEstimate.product.lookupKey)
+      return;
+
+    savedLookupKeyRef.current = normalizedEstimate.product.lookupKey;
+
+    saveSearchEstimate({
+      barcodeId: submittedCode,
+      slug: normalizedEstimate.product.slug,
+      productName: normalizedEstimate.product.productName,
+      productImageUrl: normalizedEstimate.product.imageUrl,
+      purity: normalizedEstimate.product.purity,
+      netGoldWeight: normalizedEstimate.product.netGoldWeight,
+      stones: normalizedEstimate.stones.map((stone) => ({
+        stoneTypeId: stone.stoneTypeId,
+        name:
+          settings.stoneTypes.find((s) => s.stoneId === stone.stoneTypeId)
+            ?.name ?? "",
+        weight: stone.weight,
+        quantity: stone.quantity,
+      })),
+    }).then(({ error }) => {
+      if (error) {
+        toast({
+          title: "Could not save lookup estimate",
+          description: error,
+          variant: "destructive",
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["products"] });
+      }
+    });
+  }, [
+    normalizedEstimate,
+    queryClient,
+    settings.stoneTypes,
+    submittedCode,
+    toast,
+  ]);
+
+  const handleSearch = () => {
+    submitLookupCode(searchInput);
+  };
+
+  const isLoading = searchQuery.isFetching || detailsQuery.isFetching;
+  const notFound =
+    hasSearched && !isLoading && submittedCode && searchQuery.data === null;
+  const errorMessage =
+    searchQuery.error?.message ?? detailsQuery.error?.message ?? null;
+
+  return (
+    <div className="py-6">
+      <SectionHeader
+        icon={Search}
+        title="Code Lookup"
+        isComplete={!!normalizedEstimate && !hasIssues}
+      />
+
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/25 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value.toUpperCase())}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSearch();
+              }}
+              placeholder="enter barcode to search"
+              className="flex-1 h-11 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-4 text-sm font-medium uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-[hsl(var(--foreground))]/10"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsScannerOpen(true)}
+              className="h-11 px-4 gap-2"
+            >
+              <ScanLine className="w-4 h-4" />
+              <span>Scan</span>
+            </Button>
+            <Button
+              onClick={handleSearch}
+              disabled={!searchInput.trim() || isLoading}
+              className="h-11 px-5"
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Search className="w-4 h-4" />
+              )}
+              <span className="ml-2">Search</span>
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
+            Fetch product details by code and compute a fresh estimate using
+            current local rates.
+          </p>
+        </div>
+
+        <BarcodeScanDialog
+          open={isScannerOpen}
+          onOpenChange={setIsScannerOpen}
+          onDecoded={(code) => {
+            submitLookupCode(code);
+          }}
+        />
+
+        {errorMessage && (
+          <div className="rounded-xl border border-[hsl(var(--destructive))]/30 bg-[hsl(var(--destructive))]/8 px-4 py-3 text-sm text-[hsl(var(--destructive))]">
+            {errorMessage}
+          </div>
+        )}
+
+        {notFound && (
+          <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 px-4 py-3 text-sm text-[hsl(var(--muted-foreground))]">
+            No product found for code{" "}
+            <span className="font-semibold text-[hsl(var(--foreground))]">
+              {submittedCode}
+            </span>
+            .
+          </div>
+        )}
+
+        {normalizedProduct && (
+          <div className="space-y-4">
+            <EstimateBreakdownCard
+              productName={normalizedProduct.productName}
+              productImageUrl={normalizedProduct.imageUrl}
+              productNote={normalizedProduct.description}
+              purity={normalizedProduct.purity}
+              pricing={normalizedEstimate!.pricing}
+              gstRate={settings.gstRate}
+              externalPrice={normalizedProduct.sourcePrice}
+              externalCurrency={normalizedProduct.sourceCurrency}
+              grossWeightOverride={normalizedProduct.grossWeight}
+              meta={
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-[hsl(var(--muted-foreground))]">
+                  <span>{normalizedProduct.productCode}</span>
+                  <span>•</span>
+                  <span>{normalizedProduct.categoryLabel}</span>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-1">
+                    <MapPinned className="w-3 h-3" />
+                    {normalizedProduct.location}
+                  </span>
+                </div>
+              }
+            />
+
+            <div className="rounded-2xl border border-[hsl(var(--border))] p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold">Stone Mapping</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  {normalizedProduct.stones.length} lines
+                </p>
+              </div>
+              <div className="space-y-2">
+                {normalizedProduct.stones.map((stone) => (
+                  <div
+                    key={stone.id}
+                    className="flex items-start justify-between gap-3 rounded-xl bg-[hsl(var(--muted))]/35 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{stone.code}</p>
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                        {formatNumber(stone.weight, 3)} ct • {stone.quantity}{" "}
+                        pcs
+                        {stone.stoneName !== "Unknown"
+                          ? ` • ${stone.stoneName}`
+                          : ""}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                        Source
+                      </p>
+                      <p className="text-sm font-medium tabular">
+                        {formatCurrency(stone.sourceAmount)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {hasIssues && (
+                <div className="rounded-xl border border-[hsl(var(--destructive))]/30 bg-[hsl(var(--destructive))]/8 px-4 py-3">
+                  <p className="text-sm font-semibold text-[hsl(var(--destructive))]">
+                    Estimate blocked
+                  </p>
+                  <div className="mt-1 space-y-1">
+                    {normalizedEstimate!.issues.map((issue) => (
+                      <p
+                        key={`${issue.code}:${issue.reason}`}
+                        className="text-xs text-[hsl(var(--destructive))]"
+                      >
+                        {issue.code}: {issue.reason}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CatalogueLookupModeSection({
+  settings,
+  active,
+  resetSignal,
+  onSummaryReady,
+}: {
+  settings: FixedSettings;
+  active: boolean;
+  resetSignal: number;
+  onSummaryReady: (summary: SummaryState) => void;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [searchInput, setSearchInput] = useState("");
+  const [submittedCode, setSubmittedCode] = useState("");
+  const [hasSearched, setHasSearched] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const savedLookupKeyRef = useRef<string | null>(null);
+  const openedSummaryKeyRef = useRef<string | null>(null);
+
+  const searchQuery = useCatalogueProductSearch(submittedCode, hasSearched);
+  const selectedResult = searchQuery.data;
+  const detailsQuery = useCatalogueProductDetails(
+    selectedResult?.slug ?? null,
+    !!selectedResult,
+  );
+
+  const normalizedEstimate = useMemo(() => {
+    if (!detailsQuery.data) return null;
+    return normalizeCatalogueProduct(detailsQuery.data, settings);
+  }, [detailsQuery.data, settings]);
+
+  const normalizedProduct: CatalogueLookupProduct | null =
+    normalizedEstimate?.product ?? null;
+  const hasIssues = (normalizedEstimate?.issues.length ?? 0) > 0;
+
+  const submitLookupCode = (rawCode: string) => {
+    const code = normalizeDecodedId(rawCode);
+    if (!code) return false;
+
+    setSearchInput(code);
+    openedSummaryKeyRef.current = null;
+
+    if (hasSearched && code === submittedCode) {
+      searchQuery.refetch();
+      if (selectedResult?.slug) {
+        detailsQuery.refetch();
+      }
+      return true;
+    }
+
+    savedLookupKeyRef.current = null;
+    setHasSearched(true);
+    setSubmittedCode(code);
+    return true;
+  };
+
+  useEffect(() => {
+    if (!normalizedEstimate || !active || !submittedCode) return;
+
+    const lookupKey = normalizedEstimate.product.lookupKey;
+    if (savedLookupKeyRef.current === lookupKey) return;
+
+    savedLookupKeyRef.current = lookupKey;
+
+    saveSearchEstimate({
+      barcodeId: submittedCode,
+      slug: normalizedEstimate.product.slug,
+      productName: normalizedEstimate.product.productName,
+      productImageUrl: normalizedEstimate.product.imageUrl,
+      purity: normalizedEstimate.product.purity,
+      netGoldWeight: normalizedEstimate.product.netGoldWeight,
+      stones: normalizedEstimate.stones.map((stone) => ({
+        stoneTypeId: stone.stoneTypeId,
+        name:
+          settings.stoneTypes.find((s) => s.stoneId === stone.stoneTypeId)
+            ?.name ?? "",
+        weight: stone.weight,
+        quantity: stone.quantity,
+      })),
+    }).then(({ error }) => {
+      if (error) {
+        toast({
+          title: "Could not save lookup estimate",
+          description: error,
+          variant: "destructive",
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["products"] });
+      }
+    });
+  }, [
+    active,
+    normalizedEstimate,
+    queryClient,
+    settings.stoneTypes,
+    submittedCode,
+    toast,
+  ]);
+
+  useEffect(() => {
+    if (!normalizedEstimate || hasIssues || !active) return;
+
+    const lookupKey = normalizedEstimate.product.lookupKey;
+    if (openedSummaryKeyRef.current === lookupKey) return;
+
+    openedSummaryKeyRef.current = lookupKey;
+
+    onSummaryReady({
+      origin: "search",
+      data: buildSummaryData({
+        productName: normalizedEstimate.product.productName,
+        productImageUrl: normalizedEstimate.product.imageUrl,
+        productNote: normalizedEstimate.product.description,
+        netGoldWeight: normalizedEstimate.product.netGoldWeight,
+        purity: normalizedEstimate.product.purity,
+        pricing: normalizedEstimate.pricing,
+        gstRate: settings.gstRate,
+        makingChargePerGram: settings.makingChargePerGram,
+      }),
+    });
+  }, [
+    active,
+    hasIssues,
+    normalizedEstimate,
+    onSummaryReady,
+    settings.gstRate,
+    settings.makingChargePerGram,
+  ]);
+
+  useEffect(() => {
+    setSearchInput("");
+    setSubmittedCode("");
+    setHasSearched(false);
+    setIsScannerOpen(false);
+    savedLookupKeyRef.current = null;
+    openedSummaryKeyRef.current = null;
+  }, [resetSignal]);
+
+  const handleSearch = () => {
+    submitLookupCode(searchInput);
+  };
+
+  const isLoading = searchQuery.isFetching || detailsQuery.isFetching;
+  const notFound =
+    hasSearched && !isLoading && submittedCode && searchQuery.data === null;
+  const errorMessage =
+    searchQuery.error?.message ?? detailsQuery.error?.message ?? null;
+
+  return (
+    <div className="py-6">
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsScannerOpen(true)}
+            className="h-11 w-full justify-center gap-2 rounded-xl px-4"
+          >
+            <ScanLine className="h-4 w-4" />
+            <span>Search Barcode</span>
+          </Button>
+
+          <div className="flex min-w-0 items-center gap-2">
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value.toUpperCase())}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSearch();
+              }}
+              placeholder="enter barcode to search"
+              className="h-11 min-w-0 flex-1 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-4 text-sm font-medium uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-[hsl(var(--foreground))]/10"
+            />
+            <Button
+              type="button"
+              onClick={handleSearch}
+              disabled={!searchInput.trim() || isLoading}
+              className="h-11 w-11 shrink-0 rounded-xl px-0"
+              aria-label="Search by product code"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </div>
+
+        <BarcodeScanDialog
+          open={isScannerOpen}
+          onOpenChange={setIsScannerOpen}
+          onDecoded={(code) => {
+            submitLookupCode(code);
+          }}
+        />
+
+        {errorMessage && (
+          <div className="rounded-xl border border-[hsl(var(--destructive))]/30 bg-[hsl(var(--destructive))]/8 px-4 py-3 text-sm text-[hsl(var(--destructive))]">
+            {errorMessage}
+          </div>
+        )}
+
+        {notFound && (
+          <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/30 px-4 py-3 text-sm text-[hsl(var(--muted-foreground))]">
+            No product found for code{" "}
+            <span className="font-semibold text-[hsl(var(--foreground))]">
+              {submittedCode}
+            </span>
+            .
+          </div>
+        )}
+
+        {normalizedProduct && hasIssues && (
+          <div className="rounded-2xl border border-[hsl(var(--border))] p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">
+                  {normalizedProduct.productName}
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-[hsl(var(--muted-foreground))]">
+                  <span>{normalizedProduct.productCode}</span>
+                  <span>•</span>
+                  <span>{normalizedProduct.categoryLabel}</span>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-1">
+                    <MapPinned className="w-3 h-3" />
+                    {normalizedProduct.location}
+                  </span>
+                </div>
+              </div>
+              <span className="rounded-full bg-[hsl(var(--muted))] px-2 py-1 text-[10px] text-[hsl(var(--muted-foreground))]">
+                {normalizedProduct.stones.length} stone lines
+              </span>
+            </div>
+
+            <div className="rounded-xl border border-[hsl(var(--destructive))]/30 bg-[hsl(var(--destructive))]/8 px-4 py-3">
+              <p className="text-sm font-semibold text-[hsl(var(--destructive))]">
+                Estimate blocked
+              </p>
+              <div className="mt-1 space-y-1">
+                {normalizedEstimate!.issues.map((issue) => (
+                  <p
+                    key={`${issue.code}:${issue.reason}`}
+                    className="text-xs text-[hsl(var(--destructive))]"
+                  >
+                    {issue.code}: {issue.reason}
+                  </p>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {normalizedProduct.stones.map((stone) => (
+                <div
+                  key={stone.id}
+                  className="flex items-start justify-between gap-3 rounded-xl bg-[hsl(var(--muted))]/35 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{stone.code}</p>
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                      {formatNumber(stone.weight, 3)} ct • {stone.quantity} pcs
+                      {stone.stoneName !== "Unknown"
+                        ? ` • ${stone.stoneName}`
+                        : ""}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                      Source
+                    </p>
+                    <p className="text-sm font-medium tabular">
+                      {formatCurrency(stone.sourceAmount)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface FormViewProps {
   settings: FixedSettings;
   formState: {
@@ -726,6 +1394,7 @@ interface FormViewProps {
   handleImageFile: (file: File) => void;
   removeImage: () => void;
   onCalculate: () => void;
+  onReset: () => void;
 }
 
 function FormView({
@@ -741,6 +1410,7 @@ function FormView({
   handleImageFile,
   removeImage,
   onCalculate,
+  onReset,
 }: FormViewProps) {
   const { netGoldWeight, purity, stones, productName, productNote } = formState;
   const [weightTouched, setWeightTouched] = useState(false);
@@ -752,15 +1422,18 @@ function FormView({
 
   const calculatedGoldRates = useMemo(() => {
     return GOLD_PURITIES.map((purityVal) => {
-      const percentage = settings.purityPercentages[purityVal] ?? 100;
-      const rate = Math.round(settings.goldRate24k * (percentage / 100));
+      const rate = calculateGoldRate(
+        settings.goldRate24k,
+        purityVal,
+        settings.purityPercentages,
+      );
       return { purity: purityVal, label: `${purityVal}K`, rate };
     });
   }, [settings.goldRate24k, settings.purityPercentages]);
 
   const getStoneSlabs = useCallback(
     (stoneTypeId: string): Slab[] =>
-      settings.stoneTypes.find((s) => s.stoneId === stoneTypeId)?.slabs ?? [],
+      getStoneSlabsForType(settings.stoneTypes, stoneTypeId),
     [settings.stoneTypes],
   );
 
@@ -828,7 +1501,13 @@ function FormView({
       transition={{ duration: 0.2 }}
       className="space-y-0"
     >
-      <ProgressIndicator sections={progressSections} />
+      <div className="flex my-2 pl-2 gap-2 justify-between items-center">
+        <ProgressIndicator sections={progressSections} />
+        <Button variant="ghost" size="sm" onClick={onReset}>
+          <RotateCcw className="w-3.5 h-3.5" />
+          Reset
+        </Button>
+      </div>
 
       {/* Gold Section */}
       <div className="py-6">
@@ -1044,6 +1723,51 @@ interface ResultsData {
   netGoldWeightForMaking: number;
 }
 
+interface SummaryState {
+  origin: EntryMode;
+  data: ResultsData;
+}
+
+function buildSummaryData({
+  productName,
+  productImageUrl,
+  productNote,
+  netGoldWeight,
+  purity,
+  pricing,
+  gstRate,
+  makingChargePerGram,
+}: {
+  productName: string;
+  productImageUrl: string | null;
+  productNote: string;
+  netGoldWeight: number;
+  purity: string;
+  pricing: PricingBreakdown;
+  gstRate: number;
+  makingChargePerGram: number;
+}): ResultsData {
+  return {
+    productName,
+    productImageUrl,
+    productNote,
+    netGoldWeight,
+    purity,
+    goldRateValue: pricing.goldRateValue,
+    goldCost: pricing.goldCost,
+    makingCost: pricing.makingCost,
+    stoneDetails: pricing.stoneDetails,
+    totalStoneCost: pricing.totalStoneCost,
+    subTotal: pricing.subTotal,
+    gst: pricing.gst,
+    total: pricing.total,
+    gstRate,
+    grossWeight: pricing.grossWeight,
+    makingChargePerGram,
+    netGoldWeightForMaking: netGoldWeight,
+  };
+}
+
 function SummaryView({
   data,
   onBack,
@@ -1055,6 +1779,9 @@ function SummaryView({
 }) {
   const hasStones = data.stoneDetails.some((d) => d.weight > 0);
   const displayName = data.productName.trim() || "Untitled Piece";
+  const displaySubTotal = Math.round(data.subTotal);
+  const displayGst = Math.round(data.gst);
+  const displayTotal = displaySubTotal + displayGst;
   const cardRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -1082,16 +1809,22 @@ function SummaryView({
       exit={{ opacity: 0, y: -16 }}
       transition={{ duration: 0.22, ease: "easeOut" }}
     >
+      <div className="flex w-full justify-between items-center mb-4 gap-3">
+        <Button variant="outline" size="sm" onClick={onBack}>
+          <Edit2 className="w-3.5 h-3.5" />
+          Edit Details
+        </Button>
+        <Button variant="outline" size="sm" onClick={onReset}>
+          <PlusSquare className="w-3.5 h-3.5" />
+          New Calculation
+        </Button>
+      </div>
+
       {/* Header */}
       <div className="flex items-start justify-between mb-5">
-        <div>
-          <h2 className="text-xl md:text-[1.6rem] font-semibold leading-tight text-[hsl(var(--foreground))]">
-            Summary
-          </h2>
-          <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
-            Full cost breakdown for this jewelry
-          </p>
-        </div>
+        <h2 className="text-xl md:text-[1.6rem] font-semibold leading-tight text-[hsl(var(--foreground))]">
+          Summary
+        </h2>
         <button
           onClick={handleDownload}
           disabled={isDownloading}
@@ -1117,8 +1850,8 @@ function SummaryView({
         </div>
 
         {/* Product header */}
-        <div className="grid grid-cols-2">
-          {/* Image — left half */}
+        <div className="grid grid-cols-[3fr_2fr]">
+          {/* Image — left side */}
           <div className="relative aspect-square bg-[hsl(var(--muted))] flex items-center justify-center overflow-hidden">
             {data.productImageUrl ? (
               <img
@@ -1157,7 +1890,7 @@ function SummaryView({
                 Total
               </p>
               <p className="text-lg font-bold tabular text-[hsl(var(--foreground))] leading-tight">
-                {formatCurrency(data.total)}
+                {formatCurrency(displayTotal)}
               </p>
             </div>
           </div>
@@ -1171,7 +1904,7 @@ function SummaryView({
             Gross Weight
           </span>
           <span className="text-sm font-semibold tabular text-[hsl(var(--foreground))]">
-            {formatNumber(data.grossWeight)} g
+            {formatNumber(data.grossWeight, 3)} g
           </span>
         </div>
 
@@ -1190,7 +1923,7 @@ function SummaryView({
                 Net Wt
               </p>
               <p className="font-medium tabular">
-                {formatNumber(data.netGoldWeight)} g
+                {formatNumber(data.netGoldWeight, 3)} g
               </p>
             </div>
             <div>
@@ -1272,6 +2005,11 @@ function SummaryView({
                       <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
                         {d.quantity} pcs
                       </span>
+                      {d.slabInfo?.pricePerCarat > 0 && (
+                        <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                          @ {formatCurrency(d.slabInfo.pricePerCarat)}/ct
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1300,7 +2038,7 @@ function SummaryView({
               Subtotal
             </span>
             <span className="text-sm tabular font-medium">
-              {formatCurrency(data.subTotal)}
+              {formatCurrency(displaySubTotal)}
             </span>
           </div>
           <div className="flex justify-between items-center">
@@ -1308,7 +2046,7 @@ function SummaryView({
               GST ({(data.gstRate * 100).toFixed(1)}%)
             </span>
             <span className="text-sm tabular text-[hsl(var(--muted-foreground))]">
-              {formatCurrency(data.gst)}
+              {formatCurrency(displayGst)}
             </span>
           </div>
         </div>
@@ -1317,12 +2055,12 @@ function SummaryView({
         <div className="bg-[hsl(var(--foreground))] text-[hsl(var(--background))] px-4 py-4 flex justify-between items-center">
           <span className="text-sm font-medium">Total</span>
           <motion.span
-            key={data.total}
+            key={displayTotal}
             initial={{ opacity: 0.6, y: 3 }}
             animate={{ opacity: 1, y: 0 }}
             className="text-2xl font-bold tabular"
           >
-            {formatCurrency(data.total)}
+            {formatCurrency(displayTotal)}
           </motion.span>
         </div>
 
@@ -1362,24 +2100,6 @@ function SummaryView({
           </ul>
         </div>
       </div>
-
-      {/* Navigation */}
-      <div className="flex items-center justify-between pt-5">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          Back to Edit
-        </button>
-        <button
-          onClick={onReset}
-          className="flex items-center gap-1.5 text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          New Calculation
-        </button>
-      </div>
     </motion.div>
   );
 }
@@ -1418,9 +2138,22 @@ export default function CalculatorView({
   const [loadedFromName, setLoadedFromName] = useState<string | null>(null);
 
   // ── View state ──
-  const [view, setView] = useState<"form" | "summary">("form");
+  const [entryMode, setEntryMode] = useState<EntryMode>(() =>
+    getStoredEntryMode(),
+  );
+  const [screen, setScreen] = useState<"entry" | "summary">("entry");
+  const [summaryState, setSummaryState] = useState<SummaryState | null>(null);
+  const [searchResetSignal, setSearchResetSignal] = useState(0);
 
   // ── Load initial product from history (pre-fill form) ──
+  useEffect(() => {
+    try {
+      localStorage.setItem(ENTRY_MODE_STORAGE_KEY, entryMode);
+    } catch {
+      // ignore persistence failures
+    }
+  }, [entryMode]);
+
   useEffect(() => {
     if (!initialProduct) return;
 
@@ -1435,9 +2168,18 @@ export default function CalculatorView({
       weight: s.weight,
       quantity: s.quantity,
     }));
-    updateStones(mappedStones.length > 0 ? mappedStones : [
-      { id: generateId(), stoneTypeId: settings.stoneTypes[0]?.stoneId ?? "", weight: 0, quantity: 1 },
-    ]);
+    updateStones(
+      mappedStones.length > 0
+        ? mappedStones
+        : [
+            {
+              id: generateId(),
+              stoneTypeId: settings.stoneTypes[0]?.stoneId ?? "",
+              weight: 0,
+              quantity: 1,
+            },
+          ],
+    );
 
     // Show existing image from Supabase URL (no File object)
     setExistingImageUrl(initialProduct.product_image_url);
@@ -1447,16 +2189,21 @@ export default function CalculatorView({
     productImageFileRef.current = null;
 
     setLoadedFromName(initialProduct.product_name);
-    setView("form");
+    setEntryMode("calculate");
+    setSummaryState(null);
+    setScreen("entry");
     onProductLoaded?.();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialProduct]);
 
   // ── Gold rates ──
   const calculatedGoldRates = useMemo(() => {
     return GOLD_PURITIES.map((purityVal) => {
-      const percentage = settings.purityPercentages[purityVal] ?? 100;
-      const rate = Math.round(settings.goldRate24k * (percentage / 100));
+      const rate = calculateGoldRate(
+        settings.goldRate24k,
+        purityVal,
+        settings.purityPercentages,
+      );
       return { purity: purityVal, label: `${purityVal}K`, rate };
     });
   }, [settings.goldRate24k, settings.purityPercentages]);
@@ -1467,103 +2214,63 @@ export default function CalculatorView({
   // ── Stone helpers ──
   const getStoneSlabs = useCallback(
     (stoneTypeId: string): Slab[] =>
-      settings.stoneTypes.find((s) => s.stoneId === stoneTypeId)?.slabs ?? [],
+      getStoneSlabsForType(settings.stoneTypes, stoneTypeId),
     [settings.stoneTypes],
   );
 
   // ── Calculations ──
-  const totalStoneWeightInCarats = stones.reduce((sum, d) => sum + d.weight, 0);
-  const totalStoneWeightInGrams = totalStoneWeightInCarats * CARAT_TO_GRAM;
-  const grossWeight = netGoldWeight + totalStoneWeightInGrams;
-  const goldCost = netGoldWeight * goldRateValue;
-  const makingCost = calculateMakingCharge(
-    netGoldWeight,
-    settings.makingChargeFlat,
-    settings.makingChargePerGram,
+  const pricing = useMemo(
+    () => computeEstimateFromInputs(settings, netGoldWeight, purity, stones),
+    [settings, netGoldWeight, purity, stones],
   );
-  const goldPlusMaking = goldCost + makingCost;
-
-  const stoneDetails = stones.map((d) => {
-    const stoneType = settings.stoneTypes.find(
-      (s) => s.stoneId === d.stoneTypeId,
-    );
-    const slab = resolveAutoSlab(
-      getStoneSlabs(d.stoneTypeId),
-      d.weight,
-      d.quantity,
-    );
-    const pricePerCarat = slab?.pricePerCarat ?? 0;
-    const totalCost = pricePerCarat * d.weight;
-    return {
-      ...d,
-      stoneType,
-      totalCost,
-      slabInfo: slab
-        ? {
-            code: slab.code,
-            fromWeight: slab.fromWeight,
-            toWeight: slab.toWeight,
-            pricePerCarat: slab.pricePerCarat,
-          }
-        : null,
-    };
-  });
-
-  const totalStoneCost = stoneDetails.reduce((s, d) => s + d.totalCost, 0);
-  const subTotal = goldPlusMaking + totalStoneCost;
-  const gst = subTotal * settings.gstRate;
-  const total = subTotal + gst;
+  const {
+    grossWeight,
+    goldCost,
+    makingCost,
+    stoneDetails,
+    totalStoneCost,
+    subTotal,
+    gst,
+    total,
+  } = pricing;
 
   // The effective image url to display (new local blob takes priority over existing URL)
   const displayImageUrl = productImageUrl ?? existingImageUrl;
 
   // ── Navigation ──
-  const goToSummary = () => {
-    window.scrollTo({ top: 0, left: 0 });
-    setView("summary");
-
-    // Guard: require name + image to save
-    const hasName = productName.trim().length > 0;
-    const hasImage = productImageFileRef.current !== null || existingImageUrl !== null;
-
-    if (!hasName || !hasImage) {
-      return;
-    }
-
-    // Build stones payload — only raw inputs, no pricing
-    const stonesPayload = stoneDetails.map((d) => ({
-      stoneTypeId: d.stoneTypeId,
-      name: d.stoneType?.name ?? "",
-      weight: d.weight,
-      quantity: d.quantity,
-    }));
-
-    saveProduct({
+  const goToManualSummary = () => {
+    const manualSummary = buildSummaryData({
       productName,
-      productImageFile: productImageFileRef.current,
-      existingImageUrl,
-      purity,
+      productImageUrl: displayImageUrl,
+      productNote,
       netGoldWeight,
-      stones: stonesPayload,
-    }).then(({ error }) => {
-      if (error) {
-        toast({
-          title: "Could not save product",
-          description: error,
-          variant: "destructive",
-        });
-      } else {
-        queryClient.invalidateQueries({ queryKey: ["products"] });
-      }
+      purity,
+      pricing,
+      gstRate: settings.gstRate,
+      makingChargePerGram: settings.makingChargePerGram,
     });
+
+    window.scrollTo({ top: 0, left: 0 });
+    setEntryMode("calculate");
+    setSummaryState({ origin: "calculate", data: manualSummary });
+    setScreen("summary");
   };
 
-  const goToForm = () => {
+  const handleSearchSummaryReady = useCallback((summary: SummaryState) => {
     window.scrollTo({ top: 0, left: 0 });
-    setView("form");
+    setEntryMode("search");
+    setSummaryState(summary);
+    setScreen("summary");
+  }, []);
+
+  const goToEntry = () => {
+    window.scrollTo({ top: 0, left: 0 });
+    setEntryMode(summaryState?.origin ?? entryMode);
+    setScreen("entry");
   };
 
   const reset = () => {
+    const nextMode = summaryState?.origin ?? entryMode;
     updateNetGoldWeight(0);
     updatePurity("22");
     updateStones([
@@ -1583,8 +2290,41 @@ export default function CalculatorView({
     setExistingImageUrl(null);
     productImageFileRef.current = null;
     setLoadedFromName(null);
-    setView("form");
+    setSummaryState(null);
+    setEntryMode(nextMode);
+    setSearchResetSignal((value) => value + 1);
+    setScreen("entry");
   };
+
+  const clearForm = useCallback(() => {
+    updateNetGoldWeight(0);
+    updatePurity("22");
+    updateStones([
+      {
+        id: generateId(),
+        stoneTypeId: settings.stoneTypes[0]?.stoneId ?? "",
+        weight: 0,
+        quantity: 1,
+      },
+    ]);
+    updateProductName("");
+    updateProductNote("");
+    if (productImageUrl) {
+      URL.revokeObjectURL(productImageUrl);
+      setProductImageUrl(null);
+    }
+    setExistingImageUrl(null);
+    productImageFileRef.current = null;
+    setLoadedFromName(null);
+  }, [
+    settings.stoneTypes,
+    updateNetGoldWeight,
+    updatePurity,
+    updateStones,
+    updateProductName,
+    updateProductNote,
+    productImageUrl,
+  ]);
 
   // ── Image handling ──
   const handleImageFile = useCallback(
@@ -1611,7 +2351,7 @@ export default function CalculatorView({
     <div className="relative w-full max-w-lg mx-auto">
       {/* "Loaded from history" banner */}
       <AnimatePresence>
-        {loadedFromName && view === "form" && (
+        {loadedFromName && screen === "entry" && entryMode === "calculate" && (
           <motion.div
             key="loaded-banner"
             initial={{ opacity: 0, y: -8, height: 0 }}
@@ -1624,7 +2364,10 @@ export default function CalculatorView({
               <div className="flex items-center gap-2 min-w-0">
                 <History className="w-3.5 h-3.5 text-[hsl(var(--muted-foreground))] shrink-0" />
                 <span className="text-xs text-[hsl(var(--muted-foreground))] truncate">
-                  Pre-filled from <span className="font-medium text-[hsl(var(--foreground))]">{loadedFromName}</span>
+                  Pre-filled from{" "}
+                  <span className="font-medium text-[hsl(var(--foreground))]">
+                    {loadedFromName}
+                  </span>
                 </span>
               </div>
               <button
@@ -1639,46 +2382,94 @@ export default function CalculatorView({
       </AnimatePresence>
 
       <div className="bg-[hsl(var(--card))] rounded-2xl step-card p-4 md:p-7 overflow-hidden">
+        <div className={cn(screen === "entry" ? "block" : "hidden")}>
+          <Tabs
+            value={entryMode}
+            onValueChange={(value) => setEntryMode(value as EntryMode)}
+            className="w-full"
+          >
+            <TabsList className="grid h-11 w-full grid-cols-2 rounded-xl bg-[hsl(var(--muted))] p-1">
+              <TabsTrigger value="search" className="gap-2 rounded-lg text-sm">
+                <Search className="h-4 w-4" />
+                Search
+              </TabsTrigger>
+              <TabsTrigger
+                value="calculate"
+                className="gap-2 rounded-lg text-sm"
+              >
+                <CircleDollarSign className="h-4 w-4" />
+                Calculate
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent
+              value="search"
+              forceMount
+              className={cn(
+                "mt-0",
+                entryMode === "search" ? "block" : "hidden",
+              )}
+            >
+              <CatalogueLookupModeSection
+                settings={settings}
+                active={screen === "entry" && entryMode === "search"}
+                resetSignal={searchResetSignal}
+                onSummaryReady={handleSearchSummaryReady}
+              />
+            </TabsContent>
+
+            <TabsContent
+              value="calculate"
+              forceMount
+              className={cn(
+                "mt-0",
+                entryMode === "calculate" ? "block" : "hidden",
+              )}
+            >
+              <FormView
+                settings={settings}
+                formState={formState}
+                productImageUrl={displayImageUrl}
+                fileInputRef={fileInputRef}
+                updateNetGoldWeight={updateNetGoldWeight}
+                updatePurity={updatePurity}
+                updateStones={updateStones}
+                updateProductName={updateProductName}
+                updateProductNote={updateProductNote}
+                handleImageFile={handleImageFile}
+                removeImage={removeImage}
+                onCalculate={goToManualSummary}
+                onReset={() => {
+                  updateNetGoldWeight(0);
+                  updatePurity("22");
+                  updateStones([
+                    {
+                      id: generateId(),
+                      stoneTypeId: settings.stoneTypes[0]?.stoneId ?? "",
+                      weight: 0,
+                      quantity: 1,
+                    },
+                  ]);
+                  updateProductName("");
+                  updateProductNote("");
+                  if (productImageUrl) {
+                    URL.revokeObjectURL(productImageUrl);
+                    setProductImageUrl(null);
+                  }
+                  setExistingImageUrl(null);
+                  productImageFileRef.current = null;
+                }}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
+
         <AnimatePresence mode="wait">
-          {view === "form" ? (
-            <FormView
-              key="form"
-              settings={settings}
-              formState={formState}
-              productImageUrl={displayImageUrl}
-              fileInputRef={fileInputRef}
-              updateNetGoldWeight={updateNetGoldWeight}
-              updatePurity={updatePurity}
-              updateStones={updateStones}
-              updateProductName={updateProductName}
-              updateProductNote={updateProductNote}
-              handleImageFile={handleImageFile}
-              removeImage={removeImage}
-              onCalculate={goToSummary}
-            />
-          ) : (
+          {screen === "summary" && summaryState && (
             <SummaryView
-              key="summary"
-              data={{
-                productName,
-                productImageUrl: displayImageUrl,
-                productNote,
-                netGoldWeight,
-                purity,
-                goldRateValue,
-                goldCost,
-                makingCost,
-                stoneDetails,
-                totalStoneCost,
-                subTotal,
-                gst,
-                total,
-                gstRate: settings.gstRate,
-                grossWeight,
-                makingChargePerGram: settings.makingChargePerGram,
-                netGoldWeightForMaking: netGoldWeight,
-              }}
-              onBack={goToForm}
+              key={`${summaryState.origin}-${summaryState.data.productName}-${summaryState.data.total}`}
+              data={summaryState.data}
+              onBack={goToEntry}
               onReset={reset}
             />
           )}

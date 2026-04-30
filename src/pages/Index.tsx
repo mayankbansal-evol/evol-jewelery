@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { forwardRef, useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Settings,
@@ -60,20 +60,24 @@ function formatCurrency(n: number) {
 
 // ─── Recent product mini-card ─────────────────────────────────────────────────
 
-function RecentProductCard({
+const RecentProductCard = forwardRef<
+  HTMLButtonElement,
+  {
+    product: ProductWithPricing;
+    onLoad: (p: ProductRecord) => void;
+  }
+>(function RecentProductCard({
   product,
   onLoad,
-}: {
-  product: ProductWithPricing;
-  onLoad: (p: ProductRecord) => void;
-}) {
+}, ref) {
   const stoneChips = Array.from(
     new Map(product.stones.map((s) => [s.stoneTypeId, s.name])).values()
   );
-  const dateLabel = format(new Date(product.created_at), "dd MMM");
+  const dateLabel = format(new Date(product.last_searched_at), "dd MMM");
 
   return (
     <motion.button
+      ref={ref}
       layout
       initial={{ opacity: 0, x: 8 }}
       animate={{ opacity: 1, x: 0 }}
@@ -123,15 +127,20 @@ function RecentProductCard({
 
         {/* Price + date */}
         <div className="flex items-center justify-between mt-1.5">
-          <p className="text-sm font-bold tabular-nums text-[hsl(var(--foreground))]">
-            {formatCurrency(product.total)}
-          </p>
+          <div>
+            <p className="text-sm font-bold tabular-nums text-[hsl(var(--foreground))]">
+              {formatCurrency(product.total)}
+            </p>
+            <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50">
+              {product.search_count} {product.search_count === 1 ? "search" : "searches"}
+            </p>
+          </div>
           <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{dateLabel}</p>
         </div>
       </div>
     </motion.button>
   );
-}
+});
 
 // ─── Recent products panel (shared between sidebar and bottom panel) ──────────
 
@@ -147,7 +156,7 @@ function RecentProductsPanel({
   const { products, isLoading } = useProducts(settings);
 
   const recent = [...products]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .sort((a, b) => new Date(b.last_searched_at).getTime() - new Date(a.last_searched_at).getTime())
     .slice(0, compact ? 5 : 8);
 
   return (
