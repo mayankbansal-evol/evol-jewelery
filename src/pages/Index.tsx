@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/sheet";
 import SettingsView from "@/components/SettingsView";
 import CalculatorView from "@/components/CalculatorView";
+import ProductCard, { ProductDetailDialog } from "@/components/ProductCard";
 import { useSettings } from "@/hooks/useSettings";
 import { useSyncFromSheet } from "@/hooks/useSyncFromSheet";
 import { useToast } from "@/hooks/use-toast";
@@ -45,7 +46,8 @@ function staleness(lastSynced: string | null): number {
 function staleLabel(lastSynced: string | null): string {
   if (!lastSynced) return "Prices have never been synced from the sheet.";
   const hrs = Math.floor(staleness(lastSynced) / 3_600_000);
-  if (hrs < 1) return "Prices may be out of date — last synced less than an hour ago.";
+  if (hrs < 1)
+    return "Prices may be out of date — last synced less than an hour ago.";
   if (hrs === 1) return "Prices may be out of date — last synced 1 hour ago.";
   return `Prices may be out of date — last synced ${hrs} hours ago.`;
 }
@@ -64,14 +66,11 @@ const RecentProductCard = forwardRef<
   HTMLButtonElement,
   {
     product: ProductWithPricing;
-    onLoad: (p: ProductRecord) => void;
+    onSelect: (p: ProductWithPricing) => void;
   }
->(function RecentProductCard({
-  product,
-  onLoad,
-}, ref) {
+>(function RecentProductCard({ product, onSelect }, ref) {
   const stoneChips = Array.from(
-    new Map(product.stones.map((s) => [s.stoneTypeId, s.name])).values()
+    new Map(product.stones.map((s) => [s.stoneTypeId, s.name])).values(),
   );
   const dateLabel = format(new Date(product.last_searched_at), "dd MMM");
 
@@ -83,7 +82,7 @@ const RecentProductCard = forwardRef<
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 8 }}
       transition={{ duration: 0.18 }}
-      onClick={() => onLoad(product)}
+      onClick={() => onSelect(product)}
       className="w-full text-left flex items-start gap-3 p-3 rounded-xl hover:bg-[hsl(var(--muted))]/60 active:bg-[hsl(var(--muted))]/80 transition-colors group cursor-pointer"
     >
       {/* Thumbnail */}
@@ -132,10 +131,13 @@ const RecentProductCard = forwardRef<
               {formatCurrency(product.total)}
             </p>
             <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50">
-              {product.search_count} {product.search_count === 1 ? "search" : "searches"}
+              {product.search_count}{" "}
+              {product.search_count === 1 ? "search" : "searches"}
             </p>
           </div>
-          <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50">{dateLabel}</p>
+          <p className="text-[10px] text-[hsl(var(--muted-foreground))]/50">
+            {dateLabel}
+          </p>
         </div>
       </div>
     </motion.button>
@@ -150,17 +152,37 @@ function RecentProductsPanel({
   compact = false,
 }: {
   settings: ReturnType<typeof useSettings>["settings"];
-  onLoad: (p: ProductRecord) => void;
+  onLoad: (p: ProductWithPricing) => void;
   compact?: boolean;
 }) {
   const { products, isLoading } = useProducts(settings);
+  const [selectedProduct, setSelectedProduct] =
+    useState<ProductWithPricing | null>(null);
 
   const recent = [...products]
-    .sort((a, b) => new Date(b.last_searched_at).getTime() - new Date(a.last_searched_at).getTime())
+    .sort(
+      (a, b) =>
+        new Date(b.last_searched_at).getTime() -
+        new Date(a.last_searched_at).getTime(),
+    )
     .slice(0, compact ? 5 : 8);
+
+  
 
   return (
     <div className="flex flex-col h-full">
+      {selectedProduct && (
+        <ProductDetailDialog
+          product={selectedProduct}
+          open={true}
+          onOpenChange={(open) => !open && setSelectedProduct(null)}
+          onLoad={() => {
+            onLoad(selectedProduct);
+            setSelectedProduct(null);
+          }}
+        />
+      )}
+
       {/* Panel header */}
       <div className="flex items-center justify-between mb-3 px-1">
         <div>
@@ -199,7 +221,11 @@ function RecentProductsPanel({
         ) : (
           <AnimatePresence mode="popLayout">
             {recent.map((p) => (
-              <RecentProductCard key={p.id} product={p} onLoad={onLoad} />
+              <RecentProductCard
+                key={p.id}
+                product={p}
+                onSelect={setSelectedProduct}
+              />
             ))}
           </AnimatePresence>
         )}
@@ -229,7 +255,9 @@ const Index = () => {
   const { toast } = useToast();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [loadedProduct, setLoadedProduct] = useState<ProductRecord | null>(null);
+  const [loadedProduct, setLoadedProduct] = useState<ProductRecord | null>(
+    null,
+  );
   const autoSyncRan = useRef(false);
 
   // Consume a product loaded from the /history page via localStorage
@@ -264,7 +292,9 @@ const Index = () => {
         if (!result.success) {
           toast({
             title: "Auto-sync failed",
-            description: result.error ?? "Could not fetch latest prices. Open Settings to retry.",
+            description:
+              result.error ??
+              "Could not fetch latest prices. Open Settings to retry.",
             variant: "destructive",
           });
         }
@@ -273,14 +303,18 @@ const Index = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const showBanner = !bannerDismissed && staleness(lastSynced) > SIX_HOURS_MS && !isSyncing;
+  const showBanner =
+    !bannerDismissed && staleness(lastSynced) > SIX_HOURS_MS && !isSyncing;
 
   const handleBannerSync = async () => {
     setBannerDismissed(true);
     setSettingsOpen(true);
     const result = await sync(settings, applySync);
     if (result.success) {
-      toast({ title: "Synced successfully", description: "Prices have been updated from Google Sheets." });
+      toast({
+        title: "Synced successfully",
+        description: "Prices have been updated from Google Sheets.",
+      });
     } else {
       toast({
         title: "Sync failed",
@@ -392,7 +426,6 @@ const Index = () => {
       */}
       <main className="max-w-[1072px] mx-auto px-4 md:px-6 py-5 md:py-8 pb-nav lg:pb-10">
         <div className="flex flex-col lg:flex-row gap-5 lg:gap-6 items-start">
-
           {/* ── Calculator column ──────────────────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -416,7 +449,10 @@ const Index = () => {
             className="hidden lg:flex flex-col w-80 shrink-0 sticky top-[4.5rem] max-h-[calc(100vh-6rem)]"
           >
             <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl p-4 flex flex-col h-full max-h-[calc(100vh-6rem)]">
-              <RecentProductsPanel settings={settings} onLoad={handleLoadFromRecent} />
+              <RecentProductsPanel
+                settings={settings}
+                onLoad={handleLoadFromRecent}
+              />
             </div>
           </motion.aside>
 
@@ -427,11 +463,22 @@ const Index = () => {
             transition={{ duration: 0.3, delay: 0.15, ease: "easeOut" }}
             className="w-full lg:hidden"
           >
-            <div className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl p-4" style={{ minHeight: "200px", maxHeight: "360px", display: "flex", flexDirection: "column" }}>
-              <RecentProductsPanel settings={settings} onLoad={handleLoadFromRecent} compact />
+            <div
+              className="bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-2xl p-4"
+              style={{
+                minHeight: "200px",
+                maxHeight: "360px",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <RecentProductsPanel
+                settings={settings}
+                onLoad={handleLoadFromRecent}
+                compact
+              />
             </div>
           </motion.div>
-
         </div>
       </main>
 
